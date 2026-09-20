@@ -17,7 +17,15 @@ struct ScreenCaptureService: Sendable {
 
             let currentProcessID = ProcessInfo.processInfo.processIdentifier
             let excludedApps = content.applications.filter { $0.processID == currentProcessID }
-            let filter = SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: [])
+            let selfWindows = content.windows.filter { $0.owningApplication?.processID == currentProcessID }
+            let filter: SCContentFilter
+            if !excludedApps.isEmpty {
+                filter = SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: [])
+            } else if !selfWindows.isEmpty {
+                filter = SCContentFilter(display: display, excludingWindows: selfWindows)
+            } else {
+                throw KKError.screenCaptureFailed("kk couldn't exclude its own panel from the screen capture.")
+            }
             let configuration = SCStreamConfiguration()
             configuration.showsCursor = true
             configuration.queueDepth = 1

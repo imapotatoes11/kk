@@ -60,6 +60,8 @@ struct OpenAICompatibleClient: Sendable {
                         } else if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: rawData),
                                   let message = apiError.error?.message {
                             throw KKError.streamFailed(message)
+                        } else {
+                            throw KKError.invalidResponse
                         }
                     }
 

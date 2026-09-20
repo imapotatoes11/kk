@@ -24,14 +24,15 @@ final class PanelController {
         panel?.orderOut(nil)
     }
 
-    func resize(height: CGFloat) {
+    func resize(height: CGFloat, animated: Bool = true) {
         guard let panel, let screen else { return }
         let targetHeight = min(height, UIConstants.panelMaxHeight)
         var frame = panel.frame
         let top = frame.maxY
         frame.size.height = targetHeight
         frame.origin.y = top - targetHeight
-        panel.setFrame(PanelPositioning.clamped(frame, to: screen), display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        let shouldAnimate = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        panel.setFrame(PanelPositioning.clamped(frame, to: screen), display: true, animate: shouldAnimate)
     }
 
     private func makePanel() -> KKPanel {

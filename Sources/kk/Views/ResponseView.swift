@@ -9,13 +9,13 @@ struct ResponseView: View {
     var body: some View {
         StreamingMarkdownReader(markdownSource) { parseResult in
             MarkdownView(parseResult)
-                .markdownMathRenderingEnabled()
                 .font(.system(size: 14), for: .body)
                 .markdownElementRenderer(.image(ExternalImagePlaceholderRenderer(), urlScheme: "http"))
                 .markdownElementRenderer(.image(ExternalImagePlaceholderRenderer(), urlScheme: "https"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         }
+        .markdownMathRenderingEnabled()
         .accessibilityLabel(isStreaming ? "Answer streaming" : "Assistant answer")
         .onAppear {
             markdownSource.text = markdown

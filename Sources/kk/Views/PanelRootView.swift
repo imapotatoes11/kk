@@ -7,11 +7,16 @@ struct PanelRootView: View {
     let panelController: PanelController
     let onOpenSettings: () -> Void
     let onDismiss: () -> Void
+    @State private var conversationContentHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: UIConstants.sectionSpacing) {
             if !chat.messages.isEmpty {
-                ConversationView(chat: chat)
+                ConversationView(chat: chat) { measuredHeight in
+                    guard abs(conversationContentHeight - measuredHeight) > 1 else { return }
+                    conversationContentHeight = measuredHeight
+                    panelController.resize(height: desiredHeight, animated: !chat.isStreaming)
+                }
                     .frame(maxHeight: .infinity)
                     .transition(.opacity)
             }
@@ -81,16 +86,16 @@ struct PanelRootView: View {
             panelController.resize(height: desiredHeight)
         }
         .onChange(of: chat.messages.count) { _, _ in
-            panelController.resize(height: desiredHeight)
+            panelController.resize(height: desiredHeight, animated: !chat.isStreaming)
         }
         .onChange(of: chat.prompt) { _, _ in
-            panelController.resize(height: desiredHeight)
+            panelController.resize(height: desiredHeight, animated: !chat.isStreaming)
         }
         .onChange(of: chat.generationState.isStreaming) { _, _ in
-            panelController.resize(height: desiredHeight)
+            panelController.resize(height: desiredHeight, animated: !chat.isStreaming)
         }
         .onChange(of: stateDescription) { _, _ in
-            panelController.resize(height: desiredHeight)
+            panelController.resize(height: desiredHeight, animated: !chat.isStreaming)
         }
         .animation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.2), value: chat.messages.count)
     }
@@ -109,8 +114,11 @@ struct PanelRootView: View {
         if chat.messages.isEmpty {
             return min(UIConstants.panelMaxHeight, 132 + promptExtra + (chat.generationState.isStreaming ? 0 : 0))
         }
-        let answerLength = chat.messages.last(where: { $0.role == .assistant })?.content.count ?? 0
-        return min(UIConstants.panelMaxHeight, max(230, 230 + promptExtra + CGFloat(min(answerLength, 2_000)) * 0.08))
+        let errorExtra: CGFloat = {
+            if case .error = chat.generationState { return 70 }
+            return 0
+        }()
+        return min(UIConstants.panelMaxHeight, max(230, conversationContentHeight + 106 + promptExtra + errorExtra))
     }
 
     private var stateDescription: String { String(describing: chat.generationState) }
@@ -118,6 +126,7 @@ struct PanelRootView: View {
 
 private struct ConversationView: View {
     @ObservedObject var chat: ChatController
+    let onContentHeightChange: (CGFloat) -> Void
     @State private var isNearBottom = true
 
     var body: some View {
@@ -160,12 +169,21 @@ private struct ConversationView: View {
                             }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        GeometryReader { content in
+                            Color.clear.preference(
+                                key: ConversationContentHeightKey.self,
+                                value: content.size.height
+                            )
+                        }
+                    }
                 }
                 .coordinateSpace(name: "conversation-scroll")
                 .scrollIndicators(.automatic)
                 .onPreferenceChange(ScrollBottomDistanceKey.self) { distance in
                     isNearBottom = distance <= UIConstants.scrollFollowThreshold
                 }
+                .onPreferenceChange(ConversationContentHeightKey.self, perform: onContentHeightChange)
                 .onChange(of: chat.messages.last?.content) { _, _ in
                     guard chat.isStreaming, isNearBottom else { return }
                     withAnimation(.easeOut(duration: 0.15)) {
@@ -183,6 +201,14 @@ private struct ConversationView: View {
 }
 
 private struct ScrollBottomDistanceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ConversationContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {

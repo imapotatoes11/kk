@@ -18,6 +18,7 @@ final class ChatController: ObservableObject {
     private var currentCaptureTask: Task<Void, Never>?
     private var currentGenerationTask: Task<Void, Never>?
     private var firstScreenData: Data?
+    private var activeGenerationID = UUID()
 
     var hasSubmitted: Bool { !messages.isEmpty }
     var isStreaming: Bool { generationState.isStreaming }
@@ -53,6 +54,7 @@ final class ChatController: ObservableObject {
         currentGenerationTask?.cancel()
         currentCaptureTask = nil
         currentGenerationTask = nil
+        activeGenerationID = UUID()
         prompt = ""
         messages = []
         screenContextState = .disabled
@@ -144,42 +146,54 @@ final class ChatController: ObservableObject {
             screenContextState = .sent(data)
         }
 
+        let requestMessages = ChatRequestBuilder.messages(
+            for: messages,
+            firstImage: firstScreenData,
+            appendingUserText: text
+        )
+        let request = ChatCompletionRequest(model: configuration.model, messages: requestMessages, stream: true)
+
+        currentGenerationTask?.cancel()
+        let generationID = UUID()
+        activeGenerationID = generationID
         prompt = ""
         messages.append(ChatMessage(role: .user, content: text))
         let assistantID = UUID()
         messages.append(ChatMessage(id: assistantID, role: .assistant, content: ""))
         generationState = .streaming
 
-        let requestMessages = makeAPIMessages(firstImage: firstScreenData)
-        let request = ChatCompletionRequest(model: configuration.model, messages: requestMessages, stream: true)
-
-        currentGenerationTask?.cancel()
         currentGenerationTask = Task { [weak self, apiClient] in
             do {
                 for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
                     try Task.checkCancellation()
                     guard let self else { return }
+                    guard self.activeGenerationID == generationID else { return }
                     if let index = self.messages.firstIndex(where: { $0.id == assistantID }) {
                         self.messages[index].content.append(delta)
                     }
                 }
                 guard let self else { return }
+                guard self.activeGenerationID == generationID else { return }
                 self.generationState = .completed
                 self.currentGenerationTask = nil
             } catch is CancellationError {
                 guard let self else { return }
+                guard self.activeGenerationID == generationID else { return }
                 self.generationState = .completed
                 self.currentGenerationTask = nil
             } catch let error as KKError {
                 guard let self else { return }
+                guard self.activeGenerationID == generationID else { return }
                 self.generationState = .error(error)
                 self.currentGenerationTask = nil
             } catch let error as URLError {
                 guard let self else { return }
+                guard self.activeGenerationID == generationID else { return }
                 self.generationState = .error(.network(error.localizedDescription))
                 self.currentGenerationTask = nil
             } catch {
                 guard let self else { return }
+                guard self.activeGenerationID == generationID else { return }
                 self.generationState = .error(.streamFailed(error.localizedDescription))
                 self.currentGenerationTask = nil
             }
@@ -188,6 +202,7 @@ final class ChatController: ObservableObject {
 
     func stop() {
         guard isStreaming else { return }
+        activeGenerationID = UUID()
         currentGenerationTask?.cancel()
         currentGenerationTask = nil
         generationState = .completed
@@ -209,22 +224,4 @@ final class ChatController: ObservableObject {
         NSPasteboard.general.setString(answer.content, forType: .string)
     }
 
-    private func makeAPIMessages(firstImage: Data?) -> [APIMessage] {
-        var result = [APIMessage(role: "system", content: .text(KKCopy.systemPrompt))]
-        var image = firstImage
-
-        for message in messages {
-            if message.role == .user, let imageData = image {
-                let base64 = imageData.base64EncodedString()
-                result.append(APIMessage(role: "user", content: .parts([
-                    .text(message.content),
-                    .imageURL("data:image/jpeg;base64,\(base64)")
-                ])))
-                image = nil
-            } else {
-                result.append(APIMessage(role: message.role.rawValue, content: .text(message.content)))
-            }
-        }
-        return result
-    }
 }

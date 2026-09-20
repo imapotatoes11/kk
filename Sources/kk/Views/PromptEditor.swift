@@ -39,6 +39,9 @@ struct PromptEditor: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.documentView = textView
+        DispatchQueue.main.async {
+            scrollView.window?.makeFirstResponder(textView)
+        }
         return scrollView
     }
 
@@ -48,23 +51,24 @@ struct PromptEditor: NSViewRepresentable {
         textView.onSubmit = onSubmit
         textView.isEditable = !isDisabled
         if textView.string != text { textView.string = text }
-        if text.isEmpty && !isDisabled {
+        let shouldRefocus = !isDisabled && context.coordinator.wasDisabled
+        context.coordinator.wasDisabled = isDisabled
+        if shouldRefocus {
             DispatchQueue.main.async {
-                if scrollView.window?.firstResponder == nil || scrollView.window?.firstResponder is NSButton {
-                    scrollView.window?.makeFirstResponder(textView)
-                }
+                scrollView.window?.makeFirstResponder(textView)
             }
         }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: PromptEditor
+        var wasDisabled = false
 
         init(_ parent: PromptEditor) {
             self.parent = parent
         }
 
-        func controlTextDidChange(_ notification: Notification) {
+        func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
         }

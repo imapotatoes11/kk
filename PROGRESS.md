@@ -8,6 +8,7 @@ Last updated: 2026-09-20
 - Confirmed this checkout contained only the spec; the macOS app scaffold is now present.
 - Completed the native SwiftUI/AppKit source skeleton, menu-bar invocation, floating panel, capture, API streaming, settings, Keychain, Markdown/math rendering, and pure-logic tests.
 - Current: implementation complete for this environment; the next required step is an Xcode build and manual macOS interaction pass on a machine with full Xcode.
+- Review follow-up: fixing NSTextView delegate delivery, request serialization, generation cancellation ownership, Markdown math configuration, measured panel growth, invalid-success handling, and capture self-exclusion fallback.
 
 ## Decisions and constraints
 
@@ -25,3 +26,5 @@ Last updated: 2026-09-20
 - 2026-09-20: `swiftc -parse` passes for all Swift sources/tests; `Info.plist` and the Xcode project property list both pass `plutil -lint`.
 - 2026-09-20: Added bottom-aware conversation scrolling so streaming follows only while the reader is near the bottom; prompt height and follow-up focus are preserved without stealing focus from answer selection.
 - 2026-09-20: Added `kk.xcodeproj` app target, pinned package requirements, README setup/privacy instructions, and completed the repository contract audit.
+- 2026-09-20: Review fixes applied: `NSTextViewDelegate.textDidChange` now updates the prompt and focus is requested on editor creation; request serialization excludes the in-progress assistant placeholder; generation UUIDs prevent stale cancellation callbacks from touching newer requests; math rendering is configured on the streaming reader; panel height follows measured conversation content without per-token animation; invalid successful bodies throw `invalidResponse`; capture fails safe or excludes self windows when the app list is empty.
+- 2026-09-20: Fix verification: `swiftc -parse` passes for all sources/tests, `git diff --check` passes, and both plist/project files pass `plutil -lint`. Full Xcode build and macOS focus/capture testing remain unavailable on this Command Line Tools-only environment.
