@@ -74,14 +74,21 @@ final class Preferences: ObservableObject {
         get { defaults.bool(forKey: "permissionSetupPending") }
         set { defaults.set(newValue, forKey: "permissionSetupPending") }
     }
-    @Published var discardStrokeThreshold: Double { didSet { defaults.set(discardStrokeThreshold, forKey: "discardStrokeThreshold") } }
     @Published var palettePosition: PalettePosition { didSet { defaults.set(palettePosition.rawValue, forKey: "palettePosition") } }
+    @Published var discardSensitivityLevel: Int { didSet { defaults.set(discardSensitivityLevel, forKey: "discardSensitivityLevel") } }
+    @Published var showPreviewButton: Bool { didSet { defaults.set(showPreviewButton, forKey: "showPreviewButton") } }
+    @Published var showSubmitButton: Bool { didSet { defaults.set(showSubmitButton, forKey: "showSubmitButton") } }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let threshold = defaults.double(forKey: "discardStrokeThreshold")
-        discardStrokeThreshold = threshold.isFinite && (20...600).contains(threshold) ? threshold : 160
+        let rawLegacyLength = defaults.object(forKey: "discardStrokeThreshold") as? Double ?? 160
+        let legacyLength = rawLegacyLength.isFinite ? rawLegacyLength : 160
+        let migrated = DiscardSensitivity.levels.indices.min { abs(Double(DiscardSensitivity.levels[$0].strokeLength) - legacyLength) < abs(Double(DiscardSensitivity.levels[$1].strokeLength) - legacyLength) } ?? 1
+        let sensitivity = defaults.object(forKey: "discardSensitivityLevel") as? Int ?? migrated
+        discardSensitivityLevel = min(max(sensitivity, 0), 5)
+        showPreviewButton = defaults.object(forKey: "showPreviewButton") as? Bool ?? true
+        showSubmitButton = defaults.object(forKey: "showSubmitButton") as? Bool ?? true
         palettePosition = PalettePosition(rawValue: defaults.string(forKey: "palettePosition") ?? "") ?? .bottom
         annotationReturnKey = AnnotationReturnKey(rawValue: defaults.string(forKey: "annotationReturnKey") ?? "") ?? .doubleShift
         annotationBindings = defaults.data(forKey: "annotationBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? AnnotationShortcut.defaults
@@ -108,6 +115,8 @@ final class Preferences: ObservableObject {
     }
 
     func resetCustomization() {
+        showPreviewButton = true
+        showSubmitButton = true
         popupSize = .fullSize
         popupMaterial = .opaque
         appearance = .system

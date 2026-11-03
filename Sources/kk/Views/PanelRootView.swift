@@ -14,7 +14,7 @@ struct PanelRootView: View {
     @State private var promptHeight: CGFloat = 24
 
     private var compactOpening: Bool { preferences.popupSize == .compact && !chat.hasSubmitted }
-    private var cornerRadius: CGFloat { compactOpening ? 22 : UIConstants.cornerRadius }
+    private var cornerRadius: CGFloat { 22 }
     private var needsScreenNotice: Bool {
         guard !chat.hasSubmitted else { return false }
         switch chat.screenContextState {
@@ -59,16 +59,10 @@ struct PanelRootView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background { PopupBackground(material: preferences.popupMaterial) }
+        .modifier(PopupSurface(material: preferences.popupMaterial))
         .foregroundStyle(colorScheme == .dark ? Color.white : Color.primary)
         .tint(preferences.accent.color)
         .accentColor(preferences.accent.color)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 1)
-                .allowsHitTesting(false)
-        }
         .popover(isPresented: $chat.isPreviewPresented, arrowEdge: .bottom) { ScreenPreviewView(chat: chat) }
         .task {
             while !Task.isCancelled {
@@ -91,46 +85,58 @@ struct PanelRootView: View {
     private var branding: some View {
         PanelDragArea()
             .overlay(alignment: .leading) { Text("kk").font(.system(size: 15, weight: .semibold)).allowsHitTesting(false) }
-            .frame(width: 24, height: 28)
+            .frame(width: 24, height: 40)
             .help("Drag to move kk")
             .accessibilityLabel("Drag to move kk")
     }
 
     private var settingsButton: some View {
-        Button(action: onOpenSettings) { Image(systemName: "gearshape").frame(width: 28, height: 28) }
+        Button(action: onOpenSettings) { Image(systemName: "gearshape").foregroundStyle(.primary).frame(width: 40, height: 40).contentShape(Rectangle()) }
             .keyboardShortcut(",", modifiers: .command)
             .help("Settings (⌘,)")
             .accessibilityLabel("Settings")
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             branding
             PanelDragArea().frame(maxWidth: .infinity).help("Drag to move kk")
             settingsButton
-            Button(action: onDismiss) { Image(systemName: "xmark").frame(width: 28, height: 28) }
+            PanelDragArea().frame(width: 8, height: 40)
+            Button(action: onDismiss) { Image(systemName: "xmark").frame(width: 40, height: 40).contentShape(Rectangle()) }
                 .help("Close (Escape)").accessibilityLabel("Close popup")
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 16)
         .frame(height: 44)
+        .modifier(DraggableInsets(horizontal: 16, vertical: 2))
     }
 
     private var launcherBar: some View {
-        HStack(spacing: 10) {
+        let rowHeight = max(40, promptHeight)
+        return HStack(spacing: 0) {
             branding.foregroundStyle(.secondary)
-            editor
-            screenChip
-            Button(action: chat.submit) { Image(systemName: "arrow.turn.down.left").frame(width: 28, height: 28) }
-                .foregroundStyle(.secondary).disabled(!chat.canSend)
-                .help("Send question (Return)").accessibilityLabel("Send question")
-            settingsButton.foregroundStyle(.secondary)
+            dragGap(10)
+            editor.frame(height: rowHeight)
+                .modifier(DraggableInsets(horizontal: 0, vertical: max(0, (rowHeight - promptHeight) / 2)))
+            if preferences.showPreviewButton && chat.currentPreviewData != nil { dragGap(4); screenChip }
+            if preferences.showSubmitButton {
+                dragGap(4)
+                Button(action: chat.submit) { Image(systemName: "arrow.turn.down.left").frame(width: 40, height: 40).contentShape(Rectangle()) }
+                    .disabled(!chat.canSend).help("Send question (Return)").accessibilityLabel("Send question")
+            }
+            dragGap(4)
+            settingsButton
         }
         .buttonStyle(.plain)
-        .frame(minHeight: 32)
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
+        .modifier(DraggableInsets(horizontal: 16, vertical: 8))
+    }
+
+    private func dragGap(_ width: CGFloat) -> some View {
+        PanelDragArea().frame(width: width, height: max(40, promptHeight))
     }
 
     private var editor: some View {
@@ -148,8 +154,8 @@ struct PanelRootView: View {
     }
 
     @ViewBuilder private var screenChip: some View {
-        if chat.currentPreviewData != nil {
-            Button(action: chat.togglePreview) { Image(systemName: "rectangle.on.rectangle").frame(width: 28, height: 28) }
+        if preferences.showPreviewButton && chat.currentPreviewData != nil {
+            Button(action: chat.togglePreview) { Image(systemName: "rectangle.on.rectangle").frame(width: 40, height: 40).contentShape(Rectangle()) }
                 .help("Screen attached. Sends to \(chat.endpointHost) with your question. Click to preview.")
                 .accessibilityLabel("Preview attached screen")
                 .contextMenu {
@@ -164,11 +170,18 @@ struct PanelRootView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if case .error(let error) = chat.generationState { ErrorView(error: error, onRetry: chat.retry, onOpenSettings: onOpenSettings) }
-            HStack(alignment: .bottom, spacing: 10) {
-                HStack(spacing: 4) { editor; screenChip.buttonStyle(.plain) }
+            HStack(alignment: .bottom, spacing: 0) {
+                HStack(spacing: 0) {
+                    editor.frame(height: max(40, promptHeight))
+                        .modifier(DraggableInsets(horizontal: 0, vertical: max(0, (max(40, promptHeight) - promptHeight) / 2)))
+                    if preferences.showPreviewButton && chat.currentPreviewData != nil { dragGap(4); screenChip.buttonStyle(.plain) }
+                }
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color(nsColor: .separatorColor)) }
+                    .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false) }
+                    .modifier(DraggableInsets(horizontal: 12, vertical: 10))
+                if preferences.showSubmitButton || chat.isStreaming {
+                dragGap(10)
                 Button {
                     if chat.isStreaming { chat.stop() } else { chat.submit() }
                 } label: {
@@ -179,10 +192,12 @@ struct PanelRootView: View {
                 .disabled(!chat.isStreaming && !chat.canSend)
                 .help(chat.isStreaming ? "Stop answer" : "Send question (Return)")
                 .accessibilityLabel(chat.isStreaming ? "Stop answer" : "Send question")
+                }
             }
             if needsScreenNotice { screenNotice }
         }
         .padding(12)
+        .modifier(DraggableInsets(horizontal: 12, vertical: 12))
     }
 
     private func resizePanel() {
@@ -196,11 +211,8 @@ struct UserMessageBubble: View {
     var body: some View {
         HStack {
             Spacer(minLength: 40)
-            Text(text)
-                .foregroundStyle(colorScheme == .dark ? Color.white : Color.primary)
-                .font(.system(size: 14))
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
+            ResponseView(markdown: text, isStreaming: false)
+                .accessibilityLabel("Your question")
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
                 .accessibilityLabel("Your question: " + text)

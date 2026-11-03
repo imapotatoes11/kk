@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor
 final class AnnotationController {
     let document = AnnotationDocument()
+    let colorPicker = AnnotationColorPanel()
     private let preferences: Preferences
     private let capture: @Sendable (CGDirectDisplayID?) async throws -> ScreenSnapshot
     private(set) var canvasPanel: NSPanel?
@@ -106,16 +107,19 @@ final class AnnotationController {
         toolbar.isOpaque = false
         toolbar.hasShadow = true
         toolbar.hidesOnDeactivate = false
+        toolbar.isFloatingPanel = true
+        toolbar.becomesKeyOnlyIfNeeded = true
         toolbar.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         toolbar.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         toolbar.isReleasedWhenClosed = false
-        let root = AnnotationToolbar(document: document, preferences: preferences, onFocus: { [weak self] in self?.onFocusPopup?() }, onClear: { [weak self] in self?.clearWithConfirmation() })
+        let root = AnnotationToolbar(document: document, preferences: preferences, onFocus: { [weak self] in self?.onFocusPopup?() }, onClear: { [weak self] in self?.clearWithConfirmation() }, colorPicker: colorPicker)
         let host = NSHostingView(rootView: root)
         host.sizingOptions = []
         toolbar.contentView = host
-        let width: CGFloat = min(480, screen.visibleFrame.width - 32)
-        toolbar.setFrame(preferences.palettePosition.frame(in: screen.visibleFrame, size: NSSize(width: width, height: 76), popup: textPanel?.frame), display: false)
+        let width: CGFloat = min(textPanel?.frame.width ?? 480, screen.visibleFrame.width - 32)
+        toolbar.setFrame(preferences.palettePosition.frame(in: screen.visibleFrame, size: NSSize(width: width, height: 56), popup: textPanel?.frame), display: false)
         toolbarPanel = toolbar
+        colorPicker.popup = textPanel
         document.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             guard let self else { return }
             self.canvasPanel?.ignoresMouseEvents = !self.document.isDrawing || self.document.isPreparing
@@ -142,7 +146,9 @@ final class AnnotationController {
     func updatePalettePosition() {
         guard let toolbarPanel, let screen else { return }
         let targetScreen = preferences.palettePosition == .popup ? (textPanel?.screen ?? screen) : screen
-        toolbarPanel.setFrame(preferences.palettePosition.frame(in: targetScreen.visibleFrame, size: toolbarPanel.frame.size, popup: textPanel?.frame), display: false)
+        let size = NSSize(width: min(textPanel?.frame.width ?? 480, targetScreen.visibleFrame.width - 32), height: 56)
+        toolbarPanel.setFrame(preferences.palettePosition.frame(in: targetScreen.visibleFrame, size: size, popup: textPanel?.frame), display: false)
+        colorPicker.updatePosition()
     }
 
     func focusDrawing() {
@@ -155,6 +161,7 @@ final class AnnotationController {
     }
 
     func suspend() {
+        colorPicker.close()
         shiftDetector.reset()
         suspended = true
         document.finish()
@@ -210,7 +217,8 @@ final class AnnotationController {
     }
 
     func allowDiscard() -> Bool {
-        guard preferences.confirmDiscard, document.requiresDiscardConfirmation(strokeThreshold: preferences.discardStrokeThreshold) else { return true }
+        let sensitivity = DiscardSensitivity.level(preferences.discardSensitivityLevel)
+        guard preferences.confirmDiscard, document.requiresDiscardConfirmation(strokeThreshold: sensitivity.strokeLength, strokeCount: sensitivity.strokeCount) else { return true }
         let alert = NSAlert()
         alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 4)
         alert.messageText = "Discard annotations?"
@@ -227,6 +235,7 @@ final class AnnotationController {
     func clearWithConfirmation() { if allowDiscard() { document.clear() } }
 
     func end() {
+        colorPicker.close()
         shiftDetector.reset()
         sessionID = UUID()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor); self.keyMonitor = nil }
@@ -388,64 +397,60 @@ final class AnnotationCanvasView: NSView {
 
 }
 
-private struct AnnotationToolbar: View {
+struct AnnotationToolbar: View {
     @ObservedObject var document: AnnotationDocument
     @ObservedObject var preferences: Preferences
     let onFocus: () -> Void
     let onClear: () -> Void
-    @State private var colorPickerPresented = false
+    var colorPicker = AnnotationColorPanel()
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: document.isFrozen ? "snowflake" : "record.circle")
-                .foregroundStyle(.secondary).help(document.isFrozen ? "Frozen screen" : "Live screen")
-            Button {
+        HStack(spacing: 0) {
+            PaletteButton("Pointer mode", action: {
                 document.finish()
                 document.isDrawing.toggle()
                 onFocus()
-            } label: {
-                Image(systemName: "cursorarrow").frame(width: 28, height: 28)
-                    .background(!document.isDrawing ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
+            }) {
+                Image(systemName: "cursorarrow").frame(width: 36, height: 42)
+                    .background(!document.isDrawing ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 4).frame(maxHeight: .infinity).contentShape(Rectangle())
             }
             .help("Pointer mode: pass clicks through to the desktop")
             .accessibilityLabel("Pointer mode")
             ForEach(AnnotationTool.allCases) { tool in
-                Button {
+                PaletteButton(tool.title, action: {
                     document.finish()
                     preferences.annotationTool = tool
                     document.isDrawing = true
                     onFocus()
-                } label: {
-                    VStack(spacing: 3) { Image(systemName: tool.symbol); Text(preferences.annotationBindings[tool.rawValue]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.frame(width: 28, height: 42)
-                        .background(document.isDrawing && preferences.annotationTool == tool ? preferences.annotationColor.color.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                }) {
+                    VStack(spacing: 3) { Image(systemName: tool.symbol); Text(preferences.annotationBindings[tool.rawValue]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.frame(width: 36, height: 42)
+                        .background(document.isDrawing && preferences.annotationTool == tool ? preferences.annotationColor.color.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 4).frame(maxHeight: .infinity).contentShape(Rectangle())
                 }
                 .help(tool.title).accessibilityLabel(tool.title)
             }
             Divider().frame(height: 22)
-            Button { colorPickerPresented.toggle() } label: {
+            PaletteButton("Drawing color", action: {}, anchorAction: { anchor in
+                colorPicker.toggle(from: anchor, preferences: preferences, onSelection: onFocus)
+            }) {
                 Circle().fill(preferences.annotationColor.color).frame(width: 18, height: 18)
                     .overlay { Circle().strokeBorder(.gray.opacity(0.5), lineWidth: 0.5) }
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 48).contentShape(Rectangle())
             }
             .help("Drawing color").accessibilityLabel("Drawing color")
-            .popover(isPresented: $colorPickerPresented) {
-                AnnotationColorPicker(selection: $preferences.annotationColor).padding(12)
-            }
-            .onChange(of: preferences.annotationColor) { _, _ in
-                colorPickerPresented = false
-                onFocus()
-            }
             Spacer(minLength: 0)
-            Button { document.undo(); onFocus() } label: { Image(systemName: "arrow.uturn.backward").frame(width: 28, height: 28) }
+            PaletteButton("Undo last annotation", action: { document.undo(); onFocus() }) { Image(systemName: "arrow.uturn.backward").frame(width: 40, height: 48).contentShape(Rectangle()) }
                 .disabled(!document.canUndo).help("Undo last annotation").accessibilityLabel("Undo last annotation")
-            Button { onClear(); onFocus() } label: { Image(systemName: "trash").frame(width: 28, height: 28) }
+            PaletteButton("Clear all annotations", action: { onClear(); onFocus() }) { Image(systemName: "trash").frame(width: 40, height: 48).contentShape(Rectangle()) }
                 .disabled(document.annotations.isEmpty).help("Clear all annotations").accessibilityLabel("Clear all annotations")
-            Button(action: onFocus) { VStack(spacing: 3) { Text("Ask kk"); Text(preferences.annotationBindings["focus"]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) } }.buttonStyle(.bordered).controlSize(.small)
+            PaletteButton("Ask kk", action: onFocus) { VStack(spacing: 3) { Text("Ask kk"); Text(preferences.annotationBindings["focus"]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.padding(.horizontal, 8).frame(height: PopupGeometry.actionHeight).background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius)) }
         }
         .buttonStyle(.plain)
         .disabled(document.isPreparing)
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background { PopupBackground(material: preferences.popupMaterial).clipShape(RoundedRectangle(cornerRadius: 16)) }
-        .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1) }
+        .frame(height: 48)
+        .padding(4)
+        .foregroundStyle(Color.primary)
+        .modifier(PopupSurface(material: preferences.popupMaterial))
     }
 }
 

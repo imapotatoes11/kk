@@ -21,15 +21,12 @@ struct PopupBackground: View {
 }
 
 @available(macOS 26, *)
-struct LiquidGlassPopupMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSGlassEffectView {
-        let view = NSGlassEffectView()
-        view.style = .regular
-        view.cornerRadius = UIConstants.cornerRadius
-        return view
+struct LiquidGlassPopupMaterial: View {
+    var body: some View {
+        Color.clear
+            .glassEffect(.regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.15)), in: RoundedRectangle(cornerRadius: PopupGeometry.cornerRadius))
+            .materialActiveAppearance(.active)
     }
-
-    func updateNSView(_ nsView: NSGlassEffectView, context: Context) {}
 }
 
 struct TranslucentPopupMaterial: NSViewRepresentable {

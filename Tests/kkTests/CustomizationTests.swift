@@ -166,7 +166,8 @@ final class CustomizationTests: XCTestCase {
                 XCTAssertTrue(effects.contains { $0.blendingMode == .behindWindow && $0.material == .hudWindow })
             }
             if material == .liquidGlass, #available(macOS 26, *) {
-                XCTAssertTrue(descendants(host).contains { $0 is NSGlassEffectView }, "Liquid Glass must use a native glass view")
+                // The public SwiftUI glassEffect renderer controls material activity explicitly.
+                XCTAssertFalse(descendants(host).contains { $0 is NSVisualEffectView }, "Glass should not silently fall back to the translucent material")
             }
         }
         let text = String(repeating: "A longer answer with words that wrap naturally. ", count: 12)

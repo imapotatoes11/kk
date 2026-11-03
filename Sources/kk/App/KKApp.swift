@@ -264,7 +264,7 @@ final class AppState: ObservableObject {
     private var shouldDismissShortDraft: Bool {
         !permissionSetupActive && panelController.isVisible && !chat.hasSubmitted &&
         chat.prompt.trimmingCharacters(in: .whitespacesAndNewlines).count <= 2 &&
-        annotations.document.visibleAnnotations.isEmpty && !chat.isPreviewPresented
+        annotations.document.visibleAnnotations.isEmpty && !chat.isPreviewPresented && !annotations.colorPicker.isVisible
     }
 
     func dismissShortDraftAfterDeactivation() {

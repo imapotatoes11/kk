@@ -20,6 +20,8 @@ struct CustomizationView: View {
                 }
                 .pickerStyle(.segmented)
                 Toggle("Keep popup above other windows", isOn: $preferences.alwaysOnTop)
+                Toggle("Show image preview button", isOn: $preferences.showPreviewButton)
+                Toggle("Show submit button", isOn: $preferences.showSubmitButton)
             } header: {
                 Text("Popup")
             } footer: {

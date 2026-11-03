@@ -64,11 +64,11 @@ final class PopupBehaviorTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let prefs = Preferences(defaults: defaults)
-        XCTAssertEqual(prefs.discardStrokeThreshold, 160)
-        prefs.discardStrokeThreshold = 400
+        XCTAssertEqual(prefs.discardSensitivityLevel, 1)
+        prefs.discardSensitivityLevel = 3
         prefs.palettePosition = .popup
         let restored = Preferences(defaults: defaults)
-        XCTAssertEqual(restored.discardStrokeThreshold, 400)
+        XCTAssertEqual(restored.discardSensitivityLevel, 3)
         XCTAssertEqual(restored.palettePosition, .popup)
         let doc = AnnotationDocument()
         doc.begin(at: .zero, tool: .freehand, color: .red, lineWidth: 3)

@@ -22,15 +22,15 @@ struct AnnotationsSettingsView: View {
                 Toggle("Smooth freehand strokes", isOn: $preferences.smoothStrokes)
                 Toggle("Confirm before discarding marks", isOn: $preferences.confirmDiscard)
                 if preferences.confirmDiscard {
-                    LabeledContent("Stroke threshold") {
+                    LabeledContent("Discard threshold") {
                         HStack(spacing: 8) {
-                            Slider(value: $preferences.discardStrokeThreshold, in: 20...600, step: 20).frame(width: 150)
-                            Text("\(Int(preferences.discardStrokeThreshold)) pt").monospacedDigit().frame(width: 52)
-                            Button { preferences.discardStrokeThreshold = 160 } label: { Image(systemName: "arrow.counterclockwise") }
-                                .buttonStyle(.plain).help("Reset threshold to 160 points").accessibilityLabel("Reset discard threshold")
+                            Slider(value: Binding(get: { Double(preferences.discardSensitivityLevel) }, set: { preferences.discardSensitivityLevel = Int($0.rounded()) }), in: 0...5, step: 1).frame(width: 150)
+                            Button { preferences.discardSensitivityLevel = 1 } label: { Image(systemName: "arrow.counterclockwise") }
+                                .buttonStyle(.plain).help("Reset discard threshold").accessibilityLabel("Reset discard threshold")
                         }
                     }
-                    Text("Ask after two marks, or a stroke longer than this threshold.").font(.caption).foregroundStyle(.secondary)
+                    let sensitivity = DiscardSensitivity.level(preferences.discardSensitivityLevel)
+                    Text("Ask at \(sensitivity.strokeCount) strokes or a stroke longer than \(Int(sensitivity.strokeLength)) points.").font(.caption).foregroundStyle(.secondary)
                 }
                 Picker("Palette position", selection: $preferences.palettePosition) {
                     ForEach(PalettePosition.allCases) { Text($0.title).tag($0) }

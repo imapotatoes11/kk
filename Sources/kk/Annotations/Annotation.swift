@@ -138,9 +138,9 @@ final class AnnotationDocument: ObservableObject {
     @Published var isFrozen = false
 
     var needsDiscardConfirmation: Bool { requiresDiscardConfirmation(strokeThreshold: 160) }
-    func requiresDiscardConfirmation(strokeThreshold: CGFloat) -> Bool {
+    func requiresDiscardConfirmation(strokeThreshold: CGFloat, strokeCount: Int = 2) -> Bool {
         let marks = visibleAnnotations
-        return marks.count > 1 || marks.contains { mark in
+        return marks.count >= strokeCount || marks.contains { mark in
             zip(mark.points, mark.points.dropFirst()).reduce(CGFloat.zero) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) } > strokeThreshold
         }
     }

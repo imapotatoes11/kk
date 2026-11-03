@@ -4,6 +4,10 @@ Last updated: 2026-11-03
 
 ## Current work
 
+- 2026-11-03: Completed palette follow-up: an independently layered color panel prefers below, flips above for screen/popup collisions, and closes on selection/Escape/outside click or session end. Shared Liquid Glass now uses the public SwiftUI glassEffect renderer with explicit active material appearance. Ask kk uses radius 18 = outer 22 − inset 4, with a 48-point inner height. No commits or pushes.
+
+- 2026-11-03: Completed the requested polish checklist: six-step combined discard thresholds, full-cell native palette buttons, removal of the live/frozen indicator, shared popup/palette surface and compact sizing, draggable empty chrome, consistent settings icon, preview/submit visibility toggles, and Markdown for sent user bubbles. All 77 tests and final targeted integration checks pass. No commits or pushes.
+
 - 2026-11-03: Completed short-draft dismissal (0–2 characters) with Settings-visible guard removed and deactivation fallback; prevented unfocused Settings from gaining focus on dismissal, added Settings-only Dock visibility, discard stroke threshold slider/reset, edge/popup-following palette placement, and native Launch at login control in About. 74/74 tests passed; login registration was not changed during tests. Standard delivery `DerivedData/kk.app`; no commits or pushes.
 
 - 2026-11-03: Completed preparation of access to the running app’s own containing folder before the permission helper opens, with a rasterized/cached drag image and no icon/file preparation inside draw or mouse-drag handlers. Accepted-drop feedback hides the arrow and directs users to the native Quit & Reopen dialog. Keeping the build at `DerivedData/kk.app`; no commits or pushes.
@@ -44,6 +48,10 @@ Last updated: 2026-11-03
 - Keep this file updated at each meaningful implementation or verification milestone.
 
 ## Verification log
+
+- 2026-11-03: Color/glass/radius checks: 80/80 tests passed, Xcode Debug build and diff checks passed. Added geometry cases for below preference, bottom-edge flip, popup avoidance, negative-coordinate screen clamping; native picker window-level/toggle cleanup; and radius/height equations. Existing 24 material/theme/button render scenarios, native control hit tests, and dark-text regressions remain green. Color selection is no longer a SwiftUI popover below the higher-level kk window; it uses its own panel above both windows. Actual desktop Liquid Glass appearance and physical color selection remain manually unverified. Standard output is `DerivedData/kk.app`; no commits or pushes.
+
+- 2026-11-03: Multi-item polish complete: 77/77 full-suite tests plus three final integration checks passed. The combined matrix covers 24 material/theme/preview/submit layouts, equal popup/palette dimensions, native blank-padding drag hit tests, editor text remaining plain Markdown, and Settings remaining outside drag regions. Palette cells use explicit transparent native NSButtons over the entire cell; native edge hit-testing and action dispatch pass after synthetic mouse delivery proved unreliable even at icon centers. Both stroke-count and stroke-length boundaries pass at the six sensitivity steps, including legacy-threshold migration. Reviewed all button combinations, light/dark and material pairs, settings slider/footer, and sent-user Markdown renders. Native glass backdrops still vary with desktop content; physical drag tracking was not exercised. Xcode Debug build, signature, and diff checks passed. Replaced `DerivedData/kk.app`, removed the temporary checklist, and left all changes uncommitted/unpushed.
 
 - 2026-11-03: Popup/settings refinement: all 74 tests passed. Five new tests cover short drafts while Settings is visible and annotations disabled, deactivation fallback and longer-draft preservation, native Settings focus/Dock policy, stored threshold/palette settings, threshold-dependent confirmation, and screen-edge/popup-relative geometry on negative-coordinate displays. Existing capture, permission, transform, dark-stream, rendering, and settings regressions remain green. Launch at login uses SMAppService.mainApp with actual system status, error feedback, and pending-approval action; registration/logoff was intentionally not exercised. Physical global mouse monitoring remains manually unverified.
 
