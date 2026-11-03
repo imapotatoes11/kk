@@ -85,10 +85,7 @@ final class AnnotationController {
             }
             if event.keyCode == 53 { self.onDismiss?(); return nil }
             if self.preferences.annotationBindings["focus"]?.matches(event) == true { self.onFocusPopup?(); return nil }
-            if let tool = AnnotationTool.allCases.first(where: { self.preferences.annotationBindings[$0.rawValue]?.matches(event) == true }) {
-                self.document.finish(); self.preferences.annotationTool = tool; self.document.isDrawing = true
-                return nil
-            }
+            if self.handleToolShortcut(event) { return nil }
             return event
         }
         overlay.acceptsMouseMovedEvents = true
@@ -149,6 +146,26 @@ final class AnnotationController {
         let size = NSSize(width: min(textPanel?.frame.width ?? 480, targetScreen.visibleFrame.width - 32), height: 56)
         toolbarPanel.setFrame(preferences.palettePosition.frame(in: targetScreen.visibleFrame, size: size, popup: textPanel?.frame), display: false)
         colorPicker.updatePosition()
+    }
+
+    @discardableResult
+    func handleToolShortcut(_ event: NSEvent) -> Bool {
+        let window = event.window ?? NSApp.keyWindow
+        guard isActive, !suspended, !document.isPreparing,
+              window === canvasPanel || window === toolbarPanel else { return false }
+        if preferences.annotationBindings["pointer"]?.matches(event) == true { selectPointer(); return true }
+        if let tool = AnnotationTool.allCases.first(where: { preferences.annotationBindings[$0.rawValue]?.matches(event) == true }) {
+            document.finish(); preferences.annotationTool = tool; document.isDrawing = true
+            return true
+        }
+        return false
+    }
+
+    func selectPointer() {
+        document.finish()
+        document.isDrawing = false
+        canvasPanel?.ignoresMouseEvents = true
+        NSCursor.arrow.set()
     }
 
     func focusDrawing() {
@@ -410,9 +427,13 @@ struct AnnotationToolbar: View {
                 document.isDrawing.toggle()
                 onFocus()
             }) {
-                Image(systemName: "cursorarrow").frame(width: 36, height: 42)
-                    .background(!document.isDrawing ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 4).frame(maxHeight: .infinity).contentShape(Rectangle())
+                VStack(spacing: 3) {
+                    Image(systemName: "cursorarrow")
+                    Text(preferences.annotationBindings["pointer"]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                }
+                .frame(width: 44, height: PopupGeometry.actionHeight)
+                .background(!document.isDrawing ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius))
+                .contentShape(Rectangle())
             }
             .help("Pointer mode: pass clicks through to the desktop")
             .accessibilityLabel("Pointer mode")
@@ -423,9 +444,9 @@ struct AnnotationToolbar: View {
                     document.isDrawing = true
                     onFocus()
                 }) {
-                    VStack(spacing: 3) { Image(systemName: tool.symbol); Text(preferences.annotationBindings[tool.rawValue]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.frame(width: 36, height: 42)
-                        .background(document.isDrawing && preferences.annotationTool == tool ? preferences.annotationColor.color.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                        .padding(.horizontal, 4).frame(maxHeight: .infinity).contentShape(Rectangle())
+                    VStack(spacing: 3) { Image(systemName: tool.symbol); Text(preferences.annotationBindings[tool.rawValue]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.frame(width: 44, height: PopupGeometry.actionHeight)
+                        .background(document.isDrawing && preferences.annotationTool == tool ? preferences.annotationColor.color.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius))
+                        .contentShape(Rectangle())
                 }
                 .help(tool.title).accessibilityLabel(tool.title)
             }

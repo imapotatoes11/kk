@@ -103,7 +103,14 @@ final class Preferences: ObservableObject {
         showSubmitButton = defaults.object(forKey: "showSubmitButton") as? Bool ?? true
         palettePosition = PalettePosition(rawValue: defaults.string(forKey: "palettePosition") ?? "") ?? .bottom
         annotationReturnKey = AnnotationReturnKey(rawValue: defaults.string(forKey: "annotationReturnKey") ?? "") ?? .doubleShift
-        annotationBindings = defaults.data(forKey: "annotationBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? AnnotationShortcut.defaults
+        var bindings = defaults.data(forKey: "annotationBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? AnnotationShortcut.defaults
+        if !defaults.bool(forKey: "pointerShortcutMigrated") {
+            let pointer = AnnotationShortcut.defaults["pointer"]!
+            if bindings["pointer"] == nil && !bindings.values.contains(where: { $0.keyCode == pointer.keyCode && $0.modifiers == pointer.modifiers }) { bindings["pointer"] = pointer }
+            defaults.set(try? JSONEncoder().encode(bindings), forKey: "annotationBindings")
+            defaults.set(true, forKey: "pointerShortcutMigrated")
+        }
+        annotationBindings = bindings
         smoothStrokes = defaults.object(forKey: "smoothStrokes") as? Bool ?? true
         confirmDiscard = defaults.object(forKey: "confirmDiscard") as? Bool ?? true
         annotationsEnabled = defaults.object(forKey: "annotationsEnabled") as? Bool ?? true

@@ -4,6 +4,8 @@ Last updated: 2026-11-03
 
 ## Current work
 
+- 2026-11-03: Adding configurable V pointer shortcut with existing-binding migration/conflict protection, palette key label, and shared 48-point height/18-point inner radius for pointer and tool selection backgrounds. Completed: 101/101 tests, native palette render, Xcode Debug build, signature, and diff checks passed. Default V is customizable, respects existing conflicts and explicit clearing, and is limited to annotation focus. Signed replacement delivered; no commits or pushes.
+
 - 2026-11-03: Explicitly focusing the registered prompt editor on opening and when annotation controls return to text; checking delayed overlay creation cannot leave keyboard focus on the canvas. Completed: 99/99 tests and Xcode Debug build passed; native checks cover compact/full openings, frozen/live annotations, immediate typing after delayed capture, and return from drawing to the editor. Signed stable build delivered; no commits or pushes.
 
 - 2026-11-03: Implementing curved permission guidance, editable streaming drafts/stop controls, multi-display capture selection and separate image attachments, General-first Settings, and compact material-aware copy capsules with a green success glow. Completed after resuming: 98/98 tests, native renders, Xcode Debug build, signature, and diff checks passed. Delivered at `DerivedData/kk.app`. Actual multi-monitor capture hardware and live desktop Liquid Glass appearance remain manually unverified. No commits or pushes.
@@ -69,6 +71,8 @@ Last updated: 2026-11-03
 - Keep this file updated at each meaningful implementation or verification milestone.
 
 ## Verification log
+
+- 2026-11-03: Pointer/radius polish: 101/101 tests, Xcode Debug build, signature, and diff checks passed. New native regression covers pointer switching/click-through, returning to drawing, a customized key, and not intercepting text input. Migration checks preserve conflicting V assignments and cleared pointer keys. Reviewed the selected pointer palette render with its customized label; all selected tool backgrounds now share Ask kk’s 48-point height and radius 18 = outer 22 minus padding 4. Stable signed delivery `DerivedData/kk.app`; no commits or pushes.
 
 - 2026-11-03: Prompt focus fix: 99/99 tests, Xcode Debug build, signature, and diff checks passed. PromptScrollView registers its actual NSTextView with KKPanel. Opening and annotation return-to-text explicitly focus that editor rather than only making the window key. Native regression covers both opening sizes and freeze modes, delayed overlay creation, actual typing, drawing focus, and restoration to the same editor. Capture is synthetic. Replaced `DerivedData/kk.app`; no commits or pushes.
 

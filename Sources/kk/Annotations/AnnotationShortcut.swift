@@ -10,6 +10,7 @@ struct AnnotationShortcut: Codable, Equatable {
         event.keyCode == keyCode && event.modifierFlags.intersection(Self.modifierMask).rawValue == modifiers
     }
     static let defaults: [String: Self] = [
+        "pointer": .init(keyCode: 9, modifiers: 0, label: "V"),
         "freehand": .init(keyCode: 3, modifiers: 0, label: "F"),
         "rectangle": .init(keyCode: 15, modifiers: 0, label: "R"),
         "ellipse": .init(keyCode: 14, modifiers: 0, label: "E"),

@@ -49,6 +49,7 @@ struct AnnotationsSettingsView: View {
                 ForEach(AnnotationTool.allCases) { tool in
                     LabeledContent(tool.title) { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: tool.rawValue).frame(width: 140, height: 26) }
                 }
+                LabeledContent("Pointer") { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: "pointer").frame(width: 140, height: 26) }
                 LabeledContent("Focus question") { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: "focus").frame(width: 140, height: 26) }
                 Picker("Return to drawing", selection: $preferences.annotationReturnKey) {
                     ForEach(AnnotationReturnKey.allCases) { Text($0.title).tag($0) }
