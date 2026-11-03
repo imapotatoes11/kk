@@ -19,6 +19,8 @@ final class ChatController: ObservableObject {
     private var currentGenerationTask: Task<Void, Never>?
     private var firstScreenData: Data?
     private var activeGenerationID = UUID()
+    private var activeCaptureID = UUID()
+    private var captureScreen: NSScreen?
 
     var hasSubmitted: Bool { !messages.isEmpty }
     var isStreaming: Bool { generationState.isStreaming }
@@ -55,6 +57,8 @@ final class ChatController: ObservableObject {
         currentCaptureTask = nil
         currentGenerationTask = nil
         activeGenerationID = UUID()
+        activeCaptureID = UUID()
+        captureScreen = nil
         prompt = ""
         messages = []
         screenContextState = .disabled
@@ -69,6 +73,9 @@ final class ChatController: ObservableObject {
 
     func beginCapture(for screen: NSScreen) {
         currentCaptureTask?.cancel()
+        captureScreen = screen
+        let captureID = UUID()
+        activeCaptureID = captureID
 
         guard CGPreflightScreenCaptureAccess() else {
             screenContextState = .permissionRequired
@@ -81,19 +88,19 @@ final class ChatController: ObservableObject {
             do {
                 let data = try await captureService.capture(displayID: displayID)
                 try Task.checkCancellation()
-                guard let self else { return }
+                guard let self, self.activeCaptureID == captureID else { return }
                 self.screenContextState = .ready(data)
             } catch is CancellationError {
                 return
             } catch let error as KKError {
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.activeCaptureID == captureID else { return }
                 if case .screenCapturePermission = error {
                     self.screenContextState = .permissionRequired
                 } else {
                     self.screenContextState = .failed(error.localizedDescription)
                 }
             } catch {
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.activeCaptureID == captureID else { return }
                 self.screenContextState = .failed(error.localizedDescription)
             }
         }
@@ -102,13 +109,21 @@ final class ChatController: ObservableObject {
     func removeScreen() {
         currentCaptureTask?.cancel()
         currentCaptureTask = nil
+        activeCaptureID = UUID()
+        captureScreen = nil
         isPreviewPresented = false
         guard !hasSubmitted else { return }
         screenContextState = .disabled
     }
 
     func requestScreenAccess() {
-        captureService.requestAccess()
+        if captureService.requestAccess() { resumeCaptureIfPermitted() }
+    }
+
+    func resumeCaptureIfPermitted() {
+        guard !hasSubmitted, case .permissionRequired = screenContextState,
+              CGPreflightScreenCaptureAccess(), let screen = captureScreen else { return }
+        beginCapture(for: screen)
     }
 
     func openSystemSettings() {

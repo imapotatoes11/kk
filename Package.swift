@@ -22,7 +22,7 @@ let package = Package(
                 .product(name: "MarkdownView", package: "MarkdownView")
             ],
             path: "Sources/kk",
-            resources: [.process("Resources")]
+            exclude: ["Resources"]
         ),
         .testTarget(
             name: "kkTests",

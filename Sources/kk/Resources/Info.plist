@@ -6,6 +6,8 @@
 	<string>kk</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.kw2.kk</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleName</key>
 	<string>kk</string>
 	<key>CFBundlePackageType</key>

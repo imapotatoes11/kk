@@ -20,8 +20,8 @@ enum ImageProcessor {
 
     private static func encode(_ image: CGImage, longEdge: CGFloat, quality: CGFloat) throws -> Data {
         let target = resizedImage(image, longEdge: longEdge)
-        guard let rep = NSBitmapImageRep(cgImage: target),
-              let data = rep.representation(using: .jpeg, properties: [.compressionFactor: quality]) else {
+        let rep = NSBitmapImageRep(cgImage: target)
+        guard let data = rep.representation(using: .jpeg, properties: [.compressionFactor: quality]) else {
             throw KKError.screenCaptureFailed("kk couldn't process the captured screen.")
         }
         return data

@@ -1,6 +1,8 @@
 import Foundation
 
 struct OpenAICompatibleClient: Sendable {
+    var session: URLSession = .shared
+
     func streamCompletion(
         request: ChatCompletionRequest,
         configuration: APIConfiguration
@@ -10,7 +12,7 @@ struct OpenAICompatibleClient: Sendable {
                 do {
                     let validated = try configuration.validated()
                     let urlRequest = try makeURLRequest(request: request, configuration: validated)
-                    let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
+                    let (bytes, response) = try await session.bytes(for: urlRequest)
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw KKError.invalidResponse
                     }
@@ -25,8 +27,7 @@ struct OpenAICompatibleClient: Sendable {
                     var emittedContent = false
                     var finished = false
 
-                    for try await line in bytes.lines {
-                        try Task.checkCancellation()
+                    func consumeLine(_ line: String) throws {
                         rawLines.append(line)
                         let events = parser.consume(line: line)
                         for event in events {
@@ -37,7 +38,25 @@ struct OpenAICompatibleClient: Sendable {
                             let emitted = try emit(event: event, continuation: continuation)
                             emittedContent = emittedContent || emitted
                         }
-                        if finished { break }
+                    }
+
+                    // AsyncBytes.lines omits empty lines on macOS, but SSE uses
+                    // them to delimit events. Split the bytes explicitly.
+                    var lineBytes: [UInt8] = []
+                    for try await byte in bytes {
+                        try Task.checkCancellation()
+                        if byte == 10 {
+                            if lineBytes.last == 13 { lineBytes.removeLast() }
+                            try consumeLine(String(decoding: lineBytes, as: UTF8.self))
+                            lineBytes.removeAll(keepingCapacity: true)
+                            if finished { break }
+                        } else {
+                            lineBytes.append(byte)
+                        }
+                    }
+                    if !finished && !lineBytes.isEmpty {
+                        if lineBytes.last == 13 { lineBytes.removeLast() }
+                        try consumeLine(String(decoding: lineBytes, as: UTF8.self))
                     }
 
                     if !finished {
@@ -51,6 +70,9 @@ struct OpenAICompatibleClient: Sendable {
                         }
                     }
 
+                    if emittedContent && !finished {
+                        throw KKError.streamFailed("The connection ended before the answer was complete. Please retry.")
+                    }
                     if !emittedContent {
                         let rawData = Data(rawLines.joined(separator: "\n").utf8)
                         if let completion = try? JSONDecoder().decode(CompletionResponse.self, from: rawData),

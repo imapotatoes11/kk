@@ -10,9 +10,8 @@ struct ScreenCaptureService: Sendable {
 
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            let display = content.displays.first(where: { $0.displayID == displayID }) ?? content.displays.first
-            guard let display else {
-                throw KKError.screenCaptureFailed("No display was available for capture.")
+            guard let displayID, let display = content.displays.first(where: { $0.displayID == displayID }) else {
+                throw KKError.screenCaptureFailed("The selected display is no longer available for capture.")
             }
 
             let currentProcessID = ProcessInfo.processInfo.processIdentifier
@@ -47,8 +46,8 @@ struct ScreenCaptureService: Sendable {
         }
     }
 
-    func requestAccess() {
-        _ = CGRequestScreenCaptureAccess()
+    func requestAccess() -> Bool {
+        CGRequestScreenCaptureAccess()
     }
 
     func openSystemSettings() {

@@ -76,7 +76,7 @@ struct PanelRootView: View {
                 .stroke(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 1)
         }
         .onAppear {
-            panelController.onEscape = { [weak chat] in
+            panelController.panel?.onEscape = { [weak chat = chat] in
                 if chat?.isPreviewPresented == true {
                     chat?.isPreviewPresented = false
                 } else {
@@ -84,6 +84,9 @@ struct PanelRootView: View {
                 }
             }
             panelController.resize(height: desiredHeight)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            chat.resumeCaptureIfPermitted()
         }
         .onChange(of: chat.messages.count) { _, _ in
             panelController.resize(height: desiredHeight, animated: !chat.isStreaming)
@@ -201,7 +204,7 @@ private struct ConversationView: View {
 }
 
 private struct ScrollBottomDistanceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
@@ -209,7 +212,7 @@ private struct ScrollBottomDistanceKey: PreferenceKey {
 }
 
 private struct ConversationContentHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()

@@ -15,10 +15,6 @@ struct KKApp: App {
                 .accessibilityLabel("kk")
         }
 
-        Settings {
-            SettingsView()
-                .environmentObject(appState)
-        }
     }
 }
 
@@ -32,6 +28,7 @@ final class AppState: ObservableObject {
     let panelController: PanelController
 
     private var shortcutTask: Task<Void, Never>?
+    private(set) var settingsWindow: NSWindow?
 
     init() {
         preferences = Preferences()
@@ -52,7 +49,7 @@ final class AppState: ObservableObject {
         shortcutTask = Task { [weak self] in
             let shortcut = KeyboardShortcuts.Shortcut(.k, modifiers: [.command, .option])
             for await event in KeyboardShortcuts.events(for: shortcut) where event == .keyUp {
-                await self?.togglePanel()
+                self?.togglePanel()
             }
         }
     }
@@ -79,15 +76,29 @@ final class AppState: ObservableObject {
     }
 
     func openSettings() {
+        let window: NSWindow
+        if let existing = settingsWindow {
+            window = existing
+        } else {
+            let settings = SettingsView(preferences: preferences).environmentObject(self)
+            let created = NSWindow(contentViewController: NSHostingController(rootView: settings))
+            created.title = "kk Settings"
+            created.styleMask = [.titled, .closable, .miniaturizable]
+            created.isReleasedWhenClosed = false
+            created.setContentSize(NSSize(width: 500, height: 400))
+            created.center()
+            settingsWindow = created
+            window = created
+        }
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        window.makeKeyAndOrderFront(nil)
     }
 
     private func openPanel() {
         guard !panelController.isVisible else { return }
 
         chat.reset()
-        let screen = DisplayResolver.screenContainingMouse() ?? NSScreen.main ?? NSScreen.screens[0]
+        guard let screen = DisplayResolver.screenContainingMouse() ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let rootView = PanelRootView(
             chat: chat,
             preferences: preferences,

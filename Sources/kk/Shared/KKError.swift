@@ -50,7 +50,9 @@ enum KKError: LocalizedError, Equatable {
             "Check your connection and Base URL."
         case .screenCapturePermission:
             "Grant Screen Recording access in System Settings, or continue without a screen."
-        case .server(_, let message), .streamFailed(let message):
+        case .server(_, let message):
+            message
+        case .streamFailed(let message):
             message
         default:
             nil

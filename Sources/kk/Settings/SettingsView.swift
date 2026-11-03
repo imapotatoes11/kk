@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @ObservedObject var preferences: Preferences
     @State private var apiKey = ""
     @State private var hasSavedKey = false
     @State private var statusMessage: String?
@@ -9,9 +10,9 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("API") {
-                TextField("Base URL", text: $appState.preferences.baseURL)
+                TextField("Base URL", text: $preferences.baseURL)
                     .accessibilityLabel("Base URL")
-                TextField("Model", text: $appState.preferences.model)
+                TextField("Model", text: $preferences.model)
                     .accessibilityLabel("Model")
                 SecureField("API key (optional)", text: $apiKey)
                     .accessibilityLabel("API key, optional")
@@ -39,6 +40,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 460)
         .padding(20)
+        .frame(width: 500, height: 400)
         .navigationTitle("kk Settings")
         .onAppear {
             hasSavedKey = appState.keychain.loadAPIKey()?.isEmpty == false
@@ -46,7 +48,7 @@ struct SettingsView: View {
     }
 
     private var description: String {
-        let configuration = APIConfiguration(baseURL: appState.preferences.baseURL, apiKey: "", model: appState.preferences.model)
+        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: "", model: preferences.model)
         if let host = configuration.host {
             return "kk sends your question and any attached screen image directly to \(host). Screenshots remain in memory and no conversation history or analytics are stored."
         }

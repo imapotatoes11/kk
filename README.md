@@ -18,7 +18,7 @@ kk is a menu-bar utility and does not show a normal main window. Use `kk Setting
 
 ## Permissions
 
-Screen Recording access is requested only when kk is first invoked. If access is denied, use the Screen & System Audio Recording settings link shown in the panel. The fixed global shortcut is ⌘⌥K.
+When access is missing, the panel offers a Grant access button to request Screen Recording permission. You can also open Screen & System Audio Recording settings from the panel. kk retries capture when it becomes active after permission is granted; if macOS still requires a restart, quit and reopen kk. The fixed global shortcut is ⌘⌥K.
 
 ## API configuration
 

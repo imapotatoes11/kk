@@ -30,7 +30,7 @@ struct PromptEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.containerSize = NSSize(width: 0, height: .greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
@@ -78,18 +78,19 @@ struct PromptEditor: NSViewRepresentable {
 private final class PromptTextView: NSTextView {
     var onSubmit: (() -> Void)?
 
-    override func doCommand(by selector: Selector) -> Bool {
+    override func doCommand(by selector: Selector) {
         let newlineSelectors: Set<Selector> = [
             #selector(insertNewline(_:)),
             #selector(insertNewlineIgnoringFieldEditor(_:))
         ]
-        guard newlineSelectors.contains(selector) else { return super.doCommand(by: selector) }
-        if hasMarkedText() { return super.doCommand(by: selector) }
+        guard newlineSelectors.contains(selector), !hasMarkedText() else {
+            super.doCommand(by: selector)
+            return
+        }
         if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
             insertNewline(nil)
         } else {
             onSubmit?()
         }
-        return true
     }
 }
