@@ -4,6 +4,8 @@ Last updated: 2026-11-03
 
 ## Current work
 
+- 2026-11-03: v0.9.0 prerelease preparation: optimized arm64 Release build passed, 101 regressions plus a temporary native screenshot fixture passed (102 total), README previews reviewed, and version/build metadata set to 0.9.0/900. Ad-hoc-signed app ZIP and DMG verified by extraction/read-only mount, including matching binaries/signatures, icon, and /Applications shortcut. SHA-256 checksums generated. User authorized committing/pushing the README update alongside release preparation; GitHub prerelease publication is the final step. No Developer ID/notarization identity configured; release notes disclose this.
+
 - 2026-11-03: Adding configurable V pointer shortcut with existing-binding migration/conflict protection, palette key label, and shared 48-point height/18-point inner radius for pointer and tool selection backgrounds. Completed: 101/101 tests, native palette render, Xcode Debug build, signature, and diff checks passed. Default V is customizable, respects existing conflicts and explicit clearing, and is limited to annotation focus. Signed replacement delivered; no commits or pushes.
 
 - 2026-11-03: Explicitly focusing the registered prompt editor on opening and when annotation controls return to text; checking delayed overlay creation cannot leave keyboard focus on the canvas. Completed: 99/99 tests and Xcode Debug build passed; native checks cover compact/full openings, frozen/live annotations, immediate typing after delayed capture, and return from drawing to the editor. Signed stable build delivered; no commits or pushes.

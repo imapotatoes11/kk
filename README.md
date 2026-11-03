@@ -4,6 +4,29 @@ Native macOS screen-context Q&A.
 
 Press ⌘⌥K (customizable in Settings), ask a question, and kk sends your prompt plus any attached screen image directly to an OpenAI-compatible model.
 
+## Preview
+
+Native app screenshots with sample content.
+
+<img src="docs/screenshots/launcher.png" alt="Compact kk launcher with a focused question field" width="640">
+
+<img src="docs/screenshots/chat-light.png" alt="kk conversation rendering Markdown and the quadratic formula" width="640">
+
+<img src="docs/screenshots/annotation-tools.png" alt="Annotation palette with pointer, freehand, ellipse, rectangle, arrow, and color controls" width="640">
+
+<details>
+<summary>Dark appearance</summary>
+
+<img src="docs/screenshots/chat-dark.png" alt="kk conversation in dark appearance" width="640">
+
+</details>
+
+## Download
+
+Get the [v0.9.0 prerelease](https://github.com/imapotatoes11/kk/releases/tag/v0.9.0) for Apple Silicon and macOS 15 or later. The DMG contains `kk.app` and an Applications shortcut. A standalone app ZIP is also available.
+
+This preview is ad-hoc signed and not notarized. It is not a Developer ID-signed distribution.
+
 ## Requirements
 
 - macOS 15 or later
@@ -79,3 +102,13 @@ Settings opens to General, followed by Connection, Annotations, Shortcuts, and A
 While an answer streams, the composer remains editable for the next question. Return cannot submit a concurrent request, and the action button becomes Stop even when the submit-button preference is off. Stopping preserves the next draft. Copy feedback is a compact capsule that fits its message, follows the popup material/appearance, and adds a green success glow. Permission setup uses a solid curved red arrow toward the Settings app list.
 
 In annotation mode, V switches to pointer mode so desktop clicks pass through. The pointer key is shown beneath its icon and can be changed or cleared in Annotations settings. Existing V bindings are preserved during migration. Pointer and drawing-tool highlights use the same 48-point height and 18-point inner corner radius as Ask kk.
+
+To package a release build, run `Scripts/package-release.sh /path/to/Release/kk.app DerivedData/releases/v0.9.0`. The script verifies the arm64 executable and creates the app ZIP, DMG, and SHA-256 checksums. Release version metadata lives in `Sources/kk/Resources/Info.plist` and the Xcode project.
+
+To remove only the saved API key, use Settings → Connection → Clear, or run:
+
+```sh
+security delete-generic-password -s dev.kw2.kk -a openai-compatible-api-key
+```
+
+This keeps the app’s other preferences.
