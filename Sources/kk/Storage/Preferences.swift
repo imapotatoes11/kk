@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreGraphics
 
 @MainActor
 final class Preferences: ObservableObject {
@@ -78,10 +79,21 @@ final class Preferences: ObservableObject {
     @Published var discardSensitivityLevel: Int { didSet { defaults.set(discardSensitivityLevel, forKey: "discardSensitivityLevel") } }
     @Published var showPreviewButton: Bool { didSet { defaults.set(showPreviewButton, forKey: "showPreviewButton") } }
     @Published var showSubmitButton: Bool { didSet { defaults.set(showSubmitButton, forKey: "showSubmitButton") } }
+    @Published var compactWidthLevel: Int { didSet { defaults.set(compactWidthLevel, forKey: "compactWidthLevel") } }
+    @Published var fullWidthLevel: Int { didSet { defaults.set(fullWidthLevel, forKey: "fullWidthLevel") } }
+    @Published var copyChatOnDismiss: Bool { didSet { defaults.set(copyChatOnDismiss, forKey: "copyChatOnDismiss") } }
+    @Published var confirmDismissChat: Bool { didSet { defaults.set(confirmDismissChat, forKey: "confirmDismissChat") } }
+    @Published var captureDisplayMode: CaptureDisplayMode { didSet { defaults.set(captureDisplayMode.rawValue, forKey: "captureDisplayMode") } }
+    var openingWidth: CGFloat { popupSize == .compact ? BarWidths.compact[BarWidths.clamp(compactWidthLevel)] : BarWidths.full[BarWidths.clamp(fullWidthLevel)] }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        captureDisplayMode = CaptureDisplayMode(rawValue: defaults.string(forKey: "captureDisplayMode") ?? "") ?? .cursor
+        compactWidthLevel = BarWidths.clamp(defaults.object(forKey: "compactWidthLevel") as? Int ?? BarWidths.compactDefault)
+        fullWidthLevel = BarWidths.clamp(defaults.object(forKey: "fullWidthLevel") as? Int ?? BarWidths.fullDefault)
+        copyChatOnDismiss = defaults.object(forKey: "copyChatOnDismiss") as? Bool ?? false
+        confirmDismissChat = defaults.object(forKey: "confirmDismissChat") as? Bool ?? false
         let rawLegacyLength = defaults.object(forKey: "discardStrokeThreshold") as? Double ?? 160
         let legacyLength = rawLegacyLength.isFinite ? rawLegacyLength : 160
         let migrated = DiscardSensitivity.levels.indices.min { abs(Double(DiscardSensitivity.levels[$0].strokeLength) - legacyLength) < abs(Double(DiscardSensitivity.levels[$1].strokeLength) - legacyLength) } ?? 1
@@ -115,6 +127,11 @@ final class Preferences: ObservableObject {
     }
 
     func resetCustomization() {
+        captureDisplayMode = .cursor
+        compactWidthLevel = BarWidths.compactDefault
+        fullWidthLevel = BarWidths.fullDefault
+        copyChatOnDismiss = false
+        confirmDismissChat = false
         showPreviewButton = true
         showSubmitButton = true
         popupSize = .fullSize

@@ -41,11 +41,11 @@ final class RenderingAndLayoutTests: XCTestCase {
         XCTAssertGreaterThan(conversation.contentView.bounds.origin.y, 100, "A growing answer must follow to its bottom after window layout")
         try snapshot(host, name: "popup-long-answer")
         // The manual width must also reflow the composer and protect its minimum height.
-        panel.setContentSize(NSSize(width: 440, height: 500))
+        panel.setContentSize(NSSize(width: 480, height: 500))
         controller.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: panel))
         chat.prompt = String(repeating: "A wrapped follow-up. ", count: 40)
         try await settle(host)
-        XCTAssertEqual(panel.frame.width, 440)
+        XCTAssertEqual(panel.frame.width, 480)
         XCTAssertGreaterThanOrEqual(panel.frame.height, panel.minSize.height)
         try snapshot(host, name: "popup-narrow")
     }

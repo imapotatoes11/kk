@@ -2,12 +2,12 @@ import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable {
-    case connection, customization, annotations, shortcuts, about
+    case general, connection, annotations, shortcuts, about
 
     var title: String {
         switch self {
         case .connection: "Connection"
-        case .customization: "Customization"
+        case .general: "General"
         case .annotations: "Annotations"
         case .shortcuts: "Shortcuts"
         case .about: "About"
@@ -17,7 +17,7 @@ enum SettingsSection: String, CaseIterable {
     var symbol: String {
         switch self {
         case .connection: "network"
-        case .customization: "paintbrush.pointed"
+        case .general: "slider.horizontal.3"
         case .annotations: "pencil.tip.crop.circle"
         case .shortcuts: "keyboard"
         case .about: "info.circle"
@@ -27,7 +27,7 @@ enum SettingsSection: String, CaseIterable {
 
 @MainActor
 final class SettingsSelection: ObservableObject {
-    @Published var section: SettingsSection = .connection
+    @Published var section: SettingsSection = .general
 }
 
 struct SettingsView: View {
@@ -43,7 +43,7 @@ struct SettingsView: View {
         Group {
             switch selection.section {
             case .connection: connection
-            case .customization: CustomizationView(preferences: preferences)
+            case .general: CustomizationView(preferences: preferences)
             case .annotations: AnnotationsSettingsView(preferences: preferences)
             case .shortcuts: shortcuts
             case .about: about
@@ -179,9 +179,7 @@ struct SettingsView: View {
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
                 LaunchAtLoginView().frame(maxWidth: 280)
                 Button("Show onboarding again") { appState.replayOnboarding() }
-                Text("Built for macOS")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button("Quit kk") { NSApp.terminate(nil) }
             }
             .frame(maxWidth: .infinity)
             .padding(32)

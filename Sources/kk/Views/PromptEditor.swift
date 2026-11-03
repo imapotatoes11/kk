@@ -100,6 +100,11 @@ final class PromptScrollView: NSScrollView {
     var onHeightChange: (CGFloat) -> Void = { _ in }
     private var reportedHeight: CGFloat = 0
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        (window as? KKPanel)?.promptEditor = documentView as? NSTextView
+    }
+
     override func layout() {
         super.layout()
         measureContent()

@@ -1,6 +1,14 @@
 import AppKit
 
 final class KKPanel: NSPanel {
+    weak var promptEditor: NSTextView?
+
+    func focusPrompt() {
+        orderFrontRegardless()
+        makeKey()
+        if let promptEditor, promptEditor.isEditable { makeFirstResponder(promptEditor) }
+    }
+
     var onEscape: (() -> Void)?
     var onCopyShortcut: (() -> Bool)?
     var onBeginDrag: (() -> Void)?

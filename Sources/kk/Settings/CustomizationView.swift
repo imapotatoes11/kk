@@ -10,6 +10,11 @@ struct CustomizationView: View {
                     ForEach(PopupSize.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                if preferences.popupSize == .fullSize {
+                    BarWidthControl(title: "Full-size width", level: $preferences.fullWidthLevel, widths: BarWidths.full, defaultLevel: BarWidths.fullDefault)
+                } else {
+                    BarWidthControl(title: "Compact width", level: $preferences.compactWidthLevel, widths: BarWidths.compact, defaultLevel: BarWidths.compactDefault)
+                }
                 Picker("Open popup", selection: $preferences.popupOpeningPosition) {
                     ForEach(PopupOpeningPosition.allCases) { Text($0.title).tag($0) }
                 }
@@ -56,9 +61,26 @@ struct CustomizationView: View {
                 Toggle("Show model thinking", isOn: $preferences.showThinking)
             } header: {
                 Text("Appearance")
+            }
+
+            Section {
+                Picker("Attach screen", selection: $preferences.captureDisplayMode) {
+                    ForEach(CaptureDisplayMode.allCases) { Text($0.title).tag($0) }
+                }
+            } header: {
+                Text("Screen capture")
+            } footer: {
+                Text("Active uses the focused window’s display; cursor uses the pointer’s display. All attaches a separate image of each display’s visible desktop. Applies to the next capture.")
+            }
+
+            Section {
+                Toggle("Copy multi-turn chats on dismiss", isOn: $preferences.copyChatOnDismiss)
+                Toggle("Confirm before dismissing multi-turn chats", isOn: $preferences.confirmDismissChat)
+            } header: {
+                Text("Conversations")
             } footer: {
                 HStack(alignment: .top, spacing: 16) {
-                    Text("Thinking appears when your provider shares it. Appearance and accent apply to both windows.")
+                    Text("Applies after two or more questions. Copies the conversation as Markdown, without screen images or thinking.")
                     Spacer(minLength: 0)
                     Button("Restore defaults") { preferences.resetCustomization() }
                         .help("Reset customization. Your connection and keyboard shortcut stay unchanged.")
@@ -105,5 +127,26 @@ private struct AccentSwatch: View {
         .accessibilityLabel(accent.title + " accent color")
         .accessibilityValue(isSelected ? "Selected" : "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct BarWidthControl: View {
+    let title: String
+    @Binding var level: Int
+    let widths: [CGFloat]
+    let defaultLevel: Int
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                Text("\(Int(widths[BarWidths.clamp(level)])) pt")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 46)
+                Slider(value: Binding(get: { Double(level) }, set: { level = Int($0) }), in: 0...5, step: 1)
+                    .frame(width: 140).accessibilityLabel(title)
+                Button { level = defaultLevel } label: { Image(systemName: "arrow.counterclockwise") }
+                    .buttonStyle(.borderless).help("Reset \(title.lowercased())")
+                    .accessibilityLabel("Reset \(title.lowercased())")
+            }
+        }
     }
 }

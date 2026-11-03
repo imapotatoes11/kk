@@ -4,6 +4,16 @@ Last updated: 2026-11-03
 
 ## Current work
 
+- 2026-11-03: Explicitly focusing the registered prompt editor on opening and when annotation controls return to text; checking delayed overlay creation cannot leave keyboard focus on the canvas. Completed: 99/99 tests and Xcode Debug build passed; native checks cover compact/full openings, frozen/live annotations, immediate typing after delayed capture, and return from drawing to the editor. Signed stable build delivered; no commits or pushes.
+
+- 2026-11-03: Implementing curved permission guidance, editable streaming drafts/stop controls, multi-display capture selection and separate image attachments, General-first Settings, and compact material-aware copy capsules with a green success glow. Completed after resuming: 98/98 tests, native renders, Xcode Debug build, signature, and diff checks passed. Delivered at `DerivedData/kk.app`. Actual multi-monitor capture hardware and live desktop Liquid Glass appearance remain manually unverified. No commits or pushes.
+
+- 2026-11-03: Keeping Settings at normal window level even during annotations, and showing only the selected opening mode’s width slider/reset while preserving both saved widths. Completed: 91/91 tests, Xcode Debug build, signature, and diff checks passed. Reviewed the single-slider settings render; no commits or pushes.
+
+- 2026-11-03: Adding one 250 ms retry for transient self-exclusion discovery failures, retaining passive permission gates and cancellation. Recovery warning suggests reopening the popup or relaunching kk. Completed: 90/90 tests, Xcode Debug build, signature, and diff checks passed. Retry paths use synthetic captures; actual WindowServer timing remains manually unverified. No commits or pushes.
+
+- 2026-11-03: Implementing per-turn screen capture/annotations, content-fitting conversation layout and stable bounded resizing, discrete bar widths, multi-turn dismissal controls, and About Quit button. Completed: 85/85 tests, Xcode Debug build, and light/dark short-chat plus complete settings renders passed. Fresh per-turn images and annotations, original-image retries, content-driven bounded resizing with manual-size preservation, six-step width controls, optional multi-turn copy/confirmation, and About Quit are implemented. Native capture/provider and physical drag interaction remain manually unverified; no commits or pushes.
+
 - 2026-11-03: Completed palette follow-up: an independently layered color panel prefers below, flips above for screen/popup collisions, and closes on selection/Escape/outside click or session end. Shared Liquid Glass now uses the public SwiftUI glassEffect renderer with explicit active material appearance. Ask kk uses radius 18 = outer 22 − inset 4, with a 48-point inner height. No commits or pushes.
 
 - 2026-11-03: Completed the requested polish checklist: six-step combined discard thresholds, full-cell native palette buttons, removal of the live/frozen indicator, shared popup/palette surface and compact sizing, draggable empty chrome, consistent settings icon, preview/submit visibility toggles, and Markdown for sent user bubbles. All 77 tests and final targeted integration checks pass. No commits or pushes.
@@ -41,6 +51,17 @@ Last updated: 2026-11-03
 - Current: Xcode Debug build and all 38 tests pass. New positioning coverage includes cursor edge clamping on a display with negative coordinates, independent snap axes, release hysteresis, native window opening preferences, guide cleanup, disabled snapping, and deferring response growth until dragging ends. Existing dark-stream, copy, and thinking regressions remain green. The native UI tool still times out reading kk, so physical pointer-drag interaction remains unverified; only the temporary instance launched for that attempt was stopped.
 - Review follow-up: fixing NSTextView delegate delivery, request serialization, generation cancellation ownership, Markdown math configuration, measured panel growth, invalid-success handling, and capture self-exclusion fallback.
 
+
+## Completed checkpoint: streaming, displays, and feedback
+
+- Solid red curved permission arrow now targets the app-list footer beyond the Settings sidebar, with correctly bounded drawing and tangent-aligned head.
+- Streaming keeps the native editor editable for a next draft. Return cannot send concurrently. A full-cell native action control interrupts the stream and stays available even when Submit is hidden; stopping preserves the draft.
+- Settings opens to General, then Connection, Annotations, Shortcuts, About. Screen capture selects active-window display, cursor display (default), or all visible desktops, attaching separate images. Annotation/freeze stays on the interaction display.
+- Capture sets publish atomically, previews scroll through all images, live other-display refresh runs before primary annotation preparation, frozen sessions retain their initial set, and retries restore original image sets/display labels. Capture failure preserves unsent prompt/marks. No new permissions, screenshot persistence, or live provider requests were introduced.
+- Copy success uses a content-sized capsule, shared opaque/translucent/glass background, explicit appearance, and a green border/glow; it remains noninteractive and survives closing the main popup.
+- Focused checks: `/private/tmp/kk-interaction-focused.log` (7/7). Full suite: `/private/tmp/kk-interaction-final-tests.log` (98/98). Build: `/private/tmp/kk-interaction-build.log`. Native renders: `/private/tmp/kk-interaction-final-renders`.
+- Actual multi-monitor capture hardware, physical cross-display drawing/dragging, and live desktop Liquid Glass appearance remain manually unverified. Stable signed delivery is `DerivedData/kk.app`; no commits/pushes. Temporary checklist removed.
+
 ## Decisions and constraints
 
 - The spec is authoritative; keep kk small and native.
@@ -48,6 +69,16 @@ Last updated: 2026-11-03
 - Keep this file updated at each meaningful implementation or verification milestone.
 
 ## Verification log
+
+- 2026-11-03: Prompt focus fix: 99/99 tests, Xcode Debug build, signature, and diff checks passed. PromptScrollView registers its actual NSTextView with KKPanel. Opening and annotation return-to-text explicitly focus that editor rather than only making the window key. Native regression covers both opening sizes and freeze modes, delayed overlay creation, actual typing, drawing focus, and restoration to the same editor. Capture is synthetic. Replaced `DerivedData/kk.app`; no commits or pushes.
+
+- 2026-11-03: Streaming/display/feedback polish completed after user resumed: 98/98 tests, Xcode Debug build, signature, and diff checks passed. Seven new tests cover display choice on negative-coordinate/straddling layouts; multi-image capture/history/retry/removal and preview overflow; atomic capture failure/cancellation; preserving unsent marks on additional-display failure; native typing/Return guard/full-cell Stop activation and draft retention; intrinsic capsule sizing/material/theme renders; curved arrow bounds/target and General-first Settings. The first native Stop test could not find SwiftUI’s virtual accessibility button; the action now uses the same full-cell native button as the palette and actual native press dispatch passes. Reviewed light/dark capsules, arrow, streaming composer, multiple preview images, and full General layout. Capture/API fixtures are synthetic; physical multi-display and live desktop glass appearance remain unverified. Replaced `DerivedData/kk.app`; no commits or pushes.
+
+- 2026-11-03: Settings refinement: 91/91 tests passed. New native-window regression checks Settings stays at normal level with an active annotation session and either always-on-top preference, including reopening; the popup retains its annotation layer ordering. Customization shows one width control/reset for the selected opening mode while retaining separate stored values. Settings render reviewed; Xcode Debug build, signature, and diff checks passed. Replaced `DerivedData/kk.app`; no commits or pushes.
+
+- 2026-11-03: Capture retry: 90/90 tests and Xcode Debug build passed. Five new tests verify a single delayed retry on the same display, recovery without warning, exactly two failed attempts with reopen/relaunch guidance, no retry for permission/other errors, cancellation while waiting, and keeping the popup in capturing state until retry resolves. Dismissal cancels the pending retry and suppresses stale warnings. Synthetic capture hooks avoid actual screenshots or permission prompts. Signed replacement delivered at `DerivedData/kk.app`; no commits or pushes.
+
+- 2026-11-03: Follow-up/chat layout: 85/85 full-suite tests passed. New regressions cover per-turn image serialization and unrelated-capture system guidance; synthetic follow-up capture with composited annotations and clean next-turn sessions; original-image retries and attachment removal; two-question confirmation/copy policies, clipboard failure preservation, and Markdown transcripts; persistent/reset width settings; batched streaming growth, maximum bounds, manual size preservation; native short-chat light/dark renders and complete Customization/About renders. Short responses render below 320 points rather than filling the 620-point maximum. Xcode Debug build, signature, and diff checks passed; stable delivery remains `DerivedData/kk.app`. Live macOS capture/provider use and physical resizing/drawing remain manually unverified. No commits or pushes.
 
 - 2026-11-03: Color/glass/radius checks: 80/80 tests passed, Xcode Debug build and diff checks passed. Added geometry cases for below preference, bottom-edge flip, popup avoidance, negative-coordinate screen clamping; native picker window-level/toggle cleanup; and radius/height equations. Existing 24 material/theme/button render scenarios, native control hit tests, and dark-text regressions remain green. Color selection is no longer a SwiftUI popover below the higher-level kk window; it uses its own panel above both windows. Actual desktop Liquid Glass appearance and physical color selection remain manually unverified. Standard output is `DerivedData/kk.app`; no commits or pushes.
 

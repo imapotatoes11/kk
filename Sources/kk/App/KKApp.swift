@@ -30,7 +30,10 @@ final class AppState: ObservableObject {
     let copyFeedback: CopyFeedbackController
     let annotations: AnnotationController
     private var deactivationObserver: AnyCancellable?
+    private var captureScreens: [NSScreen] = []
     private var previousApplication: NSRunningApplication?
+    var confirmChatDismissal: (() -> Bool)?
+    private var dismissing = false
     private var settingsWasKeyWhenOpening = false
     private var settingsCloseObserver: AnyCancellable?
 
@@ -50,8 +53,8 @@ final class AppState: ObservableObject {
         self.captureService = captureService
         self.apiClient = apiClient
         panelController = PanelController(preferences: preferences)
-        copyFeedback = CopyFeedbackController(clipboard: clipboard)
-        annotations = AnnotationController(preferences: preferences)
+        copyFeedback = CopyFeedbackController(clipboard: clipboard, preferences: preferences)
+        annotations = AnnotationController(preferences: preferences, captureService: captureService)
         chat = ChatController(
             preferences: preferences,
             keychain: keychain,
@@ -64,8 +67,7 @@ final class AppState: ObservableObject {
 
         annotations.onActiveChange = { [weak self] active in self?.panelController.annotationLayerActive = active }
         annotations.onFocusPopup = { [weak self] in
-            self?.panelController.panel?.orderFrontRegardless()
-            self?.panelController.panel?.makeKey()
+            self?.panelController.panel?.focusPrompt()
         }
         annotations.onEmptyCanvasClick = { [weak self] in
             guard let self, !self.chat.hasSubmitted, self.chat.prompt.trimmingCharacters(in: .whitespacesAndNewlines).count <= 2 else { return false }
@@ -81,10 +83,30 @@ final class AppState: ObservableObject {
             return true
         }
         chat.onSubmit = { [weak self] in self?.annotations.end() }
+        chat.onPrepareFollowUp = { [weak self] in self?.prepareFollowUp() }
+        chat.onAnnotate = { [weak self] in
+            guard let self else { return }
+            if self.annotations.canvasPanel != nil { self.annotations.focusDrawing() }
+            else { self.prepareFollowUp() }
+        }
         chat.preparePreview = { [weak self] data in self?.annotations.previewImage(fallback: data) ?? data }
         chat.prepareScreen = { [weak self] data in
             guard let self else { throw CancellationError() }
-            return try await self.annotations.prepareImage(fallback: data)
+            if self.annotations.isActive { return try await self.annotations.prepareImage(fallback: data) }
+            // With annotation mode disabled, refresh at send time as well.
+            guard let screen = self.captureScreens.first else { return data }
+            return try await self.captureService.captureSnapshot(displayID: DisplayResolver.displayID(for: screen)).data
+        }
+
+        chat.prepareAdditionalScreens = { [weak self] in
+            guard let self else { throw CancellationError() }
+            if self.annotations.isActive && self.annotations.document.isFrozen { return self.chat.additionalScreenData }
+            var images: [Data] = []
+            for screen in self.captureScreens.dropFirst() {
+                try Task.checkCancellation()
+                images.append(try await self.captureService.captureSnapshot(displayID: DisplayResolver.displayID(for: screen)).data)
+            }
+            return images
         }
 
         deactivationObserver = NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
@@ -184,13 +206,39 @@ final class AppState: ObservableObject {
     }
 
     func dismissPanel() {
+        guard !dismissing else { return }
+        dismissing = true
+        defer { dismissing = false }
         guard annotations.allowDiscard() else { return }
+        if chat.isMultiTurn && preferences.confirmDismissChat {
+            let accepted: Bool
+            if let confirmChatDismissal { accepted = confirmChatDismissal() }
+            else {
+                annotations.suspend()
+                let alert = NSAlert()
+                alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 4)
+                alert.messageText = "Close this chat?"
+                alert.informativeText = preferences.copyChatOnDismiss ? "The conversation will be copied to your clipboard before closing." : "This conversation will be cleared."
+                alert.addButton(withTitle: "Keep chatting")
+                alert.addButton(withTitle: "Close chat")
+                accepted = alert.runModal() == .alertSecondButtonReturn
+                if !accepted { annotations.resume() }
+            }
+            guard accepted else { return }
+        }
+        if chat.isMultiTurn && preferences.copyChatOnDismiss {
+            guard copyFeedback.copy(chat.clipboardTranscript, near: panelController.panel?.frame, successMessage: "Chat copied") else {
+                annotations.resume()
+                return
+            }
+        }
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor); self.outsideClickMonitor = nil }
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor); self.localClickMonitor = nil }
         let settings = settingsWindow as? KKSettingsWindow
         if !settingsWasKeyWhenOpening { settings?.suppressAutomaticKey = true }
         annotations.end()
         chat.dismiss()
+        captureScreens = []
         panelController.hide()
         if NSApp.isActive, let previousApplication, !previousApplication.isTerminated { previousApplication.activate(options: []) }
         previousApplication = nil
@@ -198,6 +246,15 @@ final class AppState: ObservableObject {
             try? await Task.sleep(for: .milliseconds(100))
             settings?.suppressAutomaticKey = false
         }
+    }
+
+    private func prepareFollowUp() {
+        guard panelController.isVisible, !permissionSetupActive else { return }
+        captureScreens = DisplayResolver.captureScreens(mode: preferences.captureDisplayMode)
+        guard let screen = captureScreens.first else { return }
+        annotations.begin(on: screen)
+        if settingsWindow?.isKeyWindow == true { annotations.suspend() }
+        chat.beginCapture(for: screen, additionalScreens: Array(captureScreens.dropFirst()))
     }
 
     func openSettings() {
@@ -228,7 +285,7 @@ final class AppState: ObservableObject {
                 }
                 if self.panelController.isVisible { self.annotations.resume() }
             }
-        window.level = annotations.isActive ? NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 3) : .normal
+        window.level = .normal
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
@@ -250,6 +307,7 @@ final class AppState: ObservableObject {
         guard annotations.allowDiscard() else { return }
         annotations.end()
         chat.dismiss()
+        captureScreens = []
         panelController.hide()
         settingsWindow?.close()
         presentOnboarding()
@@ -306,11 +364,14 @@ final class AppState: ObservableObject {
         previousApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
         settingsWasKeyWhenOpening = settingsWindow?.isKeyWindow == true
         (settingsWindow as? KKSettingsWindow)?.suppressAutomaticKey = false
-        annotations.begin(on: screen)
+        // Resolve the focused external window before kk becomes active.
+        captureScreens = DisplayResolver.captureScreens(mode: preferences.captureDisplayMode)
+        let captureScreen = captureScreens.first ?? screen
+        annotations.begin(on: captureScreen)
         panelController.show(rootView: AnyView(rootView), on: screen)
         panelController.panel?.onCopyShortcut = { [weak self] in self?.handleCopyShortcut() ?? false }
         annotations.textPanel = panelController.panel
-        chat.beginCapture(for: screen)
+        chat.beginCapture(for: captureScreen, additionalScreens: Array(captureScreens.dropFirst()))
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.dismissEmptyPopupOnOutsideClick() }

@@ -12,9 +12,15 @@ final class ChatController: ObservableObject {
     @Published private(set) var isPreparingScreen = false
     var onCaptureReady: ((ScreenSnapshot) -> Void)?
     var onRemoveScreen: (() -> Bool)?
+    var onAnnotate: (() -> Void)?
     var onSubmit: (() -> Void)?
+    var onPrepareFollowUp: (() -> Void)?
     var preparePreview: ((Data) -> Data)?
     @Published private var annotatedPreviewData: Data?
+    var prepareAdditionalScreens: (() async throws -> [Data])?
+    @Published private(set) var additionalScreenData: [Data] = []
+    @Published private(set) var capturedScreenNames: [String] = []
+    private var captureAdditionalScreens: [NSScreen] = []
     var prepareScreen: ((Data) async throws -> Data)?
     private var currentPreparationTask: Task<Void, Never>?
     private var activePreparationID = UUID()
@@ -23,10 +29,10 @@ final class ChatController: ObservableObject {
 
     private let keychain: APIKeyStoring
     private let captureService: ScreenCaptureService
+    private let captureSnapshot: @Sendable (CGDirectDisplayID?) async throws -> ScreenSnapshot
     private let apiClient: OpenAICompatibleClient
     private var currentCaptureTask: Task<Void, Never>?
     private var currentGenerationTask: Task<Void, Never>?
-    private var firstScreenData: Data?
     private var activeGenerationID = UUID()
     private var activeCaptureID = UUID()
     var screenCaptureSuspended = false
@@ -46,6 +52,8 @@ final class ChatController: ObservableObject {
 
     var currentPreviewData: Data? { isPreviewPresented ? (annotatedPreviewData ?? screenContextState.previewData) : screenContextState.previewData }
 
+    var currentPreviewImages: [Data] { currentPreviewData.map { [$0] + additionalScreenData } ?? [] }
+
     var endpointHost: String {
         APIConfiguration(baseURL: preferences.baseURL, apiKey: "", model: preferences.model).host ?? "configured endpoint"
     }
@@ -55,11 +63,13 @@ final class ChatController: ObservableObject {
         keychain: APIKeyStoring,
         captureService: ScreenCaptureService,
         apiClient: OpenAICompatibleClient,
-        initialScreenContext: ScreenContextState = .disabled
+        initialScreenContext: ScreenContextState = .disabled,
+        capture: (@Sendable (CGDirectDisplayID?) async throws -> ScreenSnapshot)? = nil
     ) {
         self.preferences = preferences
         self.keychain = keychain
         self.captureService = captureService
+        self.captureSnapshot = capture ?? { displayID in try await captureService.captureSnapshot(displayID: displayID) }
         self.apiClient = apiClient
         self.screenContextState = initialScreenContext
     }
@@ -76,6 +86,9 @@ final class ChatController: ObservableObject {
         activeGenerationID = UUID()
         activeCaptureID = UUID()
         captureScreen = nil
+        captureAdditionalScreens = []
+        additionalScreenData = []
+        capturedScreenNames = []
         captureDeniedWithGrantedPreflight = false
         prompt = ""
         messages = []
@@ -83,17 +96,21 @@ final class ChatController: ObservableObject {
         generationState = .idle
         isPreviewPresented = false
         annotatedPreviewData = nil
-        firstScreenData = nil
     }
 
     func dismiss() {
         reset()
     }
 
-    func beginCapture(for screen: NSScreen) {
+    func beginCapture(for screen: NSScreen, additionalScreens: [NSScreen] = []) {
         guard !screenCaptureSuspended else { return }
         currentCaptureTask?.cancel()
         captureScreen = screen
+        captureAdditionalScreens = additionalScreens
+        additionalScreenData = []
+        annotatedPreviewData = nil
+        isPreviewPresented = false
+        capturedScreenNames = ([screen] + additionalScreens).map(\.localizedName)
         let captureID = UUID()
         activeCaptureID = captureID
         guard captureService.hasPassiveAccess, !captureDeniedWithGrantedPreflight else {
@@ -102,11 +119,18 @@ final class ChatController: ObservableObject {
         }
         screenContextState = .capturing
         let displayID = DisplayResolver.displayID(for: screen)
-        currentCaptureTask = Task { [weak self, captureService] in
+        let additionalIDs = additionalScreens.map { DisplayResolver.displayID(for: $0) }
+        currentCaptureTask = Task { [weak self, captureService, captureSnapshot] in
             do {
-                let snapshot = try await captureService.captureSnapshot(displayID: displayID)
+                let snapshot = try await captureSnapshot(displayID)
+                var additional: [Data] = []
+                for id in additionalIDs {
+                    try Task.checkCancellation()
+                    additional.append(try await captureSnapshot(id).data)
+                }
                 try Task.checkCancellation()
                 guard let self, self.activeCaptureID == captureID else { return }
+                self.additionalScreenData = additional
                 self.screenContextState = .ready(snapshot.data)
                 self.onCaptureReady?(snapshot)
             } catch is CancellationError {
@@ -128,15 +152,17 @@ final class ChatController: ObservableObject {
     }
 
     func removeScreen() {
-        guard !hasSubmitted, !isPreparingScreen else { return }
+        guard !isStreaming, !isPreparingScreen else { return }
         guard onRemoveScreen?() ?? true else { return }
         annotatedPreviewData = nil
         currentCaptureTask?.cancel()
         currentCaptureTask = nil
         activeCaptureID = UUID()
         captureScreen = nil
+        captureAdditionalScreens = []
+        additionalScreenData = []
+        capturedScreenNames = []
         isPreviewPresented = false
-        guard !hasSubmitted else { return }
         screenContextState = .disabled
     }
 
@@ -154,13 +180,13 @@ final class ChatController: ObservableObject {
     }
 
     func resumeCaptureIfPermitted() {
-        guard !screenCaptureSuspended, !hasSubmitted, case .permissionRequired = screenContextState,
+        guard !screenCaptureSuspended, !isStreaming, case .permissionRequired = screenContextState,
               captureService.hasPassiveAccess, let screen = captureScreen else { return }
-        beginCapture(for: screen)
+        beginCapture(for: screen, additionalScreens: captureAdditionalScreens)
     }
 
     func refreshScreenAccess() async {
-        guard !screenCaptureSuspended, !hasSubmitted, captureScreen != nil, case .permissionRequired = screenContextState else { return }
+        guard !screenCaptureSuspended, !isStreaming, captureScreen != nil, case .permissionRequired = screenContextState else { return }
         if await captureService.hasAccess() { resumeCaptureIfPermitted() }
     }
 
@@ -204,13 +230,19 @@ final class ChatController: ObservableObject {
             isPreparingScreen = true
             let id = UUID()
             activePreparationID = id
+            let retainedAdditional = additionalScreenData
+            let prepareAdditional = prepareAdditionalScreens
             currentPreparationTask = Task { [weak self] in
                 do {
+                    // Refresh other displays first, so a failure cannot clear unsent marks.
+                    let additional = try await prepareAdditional?() ?? retainedAdditional
+                    try Task.checkCancellation()
                     let prepared = try await prepareScreen(data)
                     try Task.checkCancellation()
                     guard let self, self.activePreparationID == id else { return }
                     self.isPreparingScreen = false
                     self.currentPreparationTask = nil
+                    self.additionalScreenData = additional
                     self.screenContextState = .ready(prepared)
                     self.send(text: text, configuration: configuration)
                 } catch {
@@ -230,15 +262,18 @@ final class ChatController: ObservableObject {
         isPreviewPresented = false
         annotatedPreviewData = nil
         onSubmit?()
+        let image: Data?
         if case .ready(let data) = screenContextState {
-            firstScreenData = data
+            image = data
             screenContextState = .sent(data)
-        }
+        } else { image = nil }
 
         let requestMessages = ChatRequestBuilder.messages(
             for: messages,
-            firstImage: firstScreenData,
-            appendingUserText: text
+            firstImage: nil,
+            appendingUserText: text,
+            appendingImage: image,
+            additionalImages: image == nil ? [] : additionalScreenData
         )
         let request = ChatCompletionRequest(model: configuration.model, messages: requestMessages, stream: true)
 
@@ -246,7 +281,7 @@ final class ChatController: ObservableObject {
         let generationID = UUID()
         activeGenerationID = generationID
         prompt = ""
-        messages.append(ChatMessage(role: .user, content: text))
+        messages.append(ChatMessage(role: .user, content: text, screenData: image, additionalScreenData: image == nil ? [] : additionalScreenData, screenNames: image == nil ? [] : capturedScreenNames))
         let assistantID = UUID()
         var assistant = ChatMessage(id: assistantID, role: .assistant, content: "")
         assistant.generationStartedAt = .now
@@ -255,7 +290,10 @@ final class ChatController: ObservableObject {
 
         currentGenerationTask = Task { [weak self, apiClient] in
             defer {
-                if self?.activeGenerationID == generationID { self?.finishThinking() }
+                if self?.activeGenerationID == generationID {
+                    self?.finishThinking()
+                    self?.onPrepareFollowUp?()
+                }
             }
             do {
                 for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
@@ -310,17 +348,32 @@ final class ChatController: ObservableObject {
         currentGenerationTask?.cancel()
         currentGenerationTask = nil
         generationState = .completed
+        onPrepareFollowUp?()
     }
 
     func retry() {
         if !hasSubmitted { submit(); return }
         guard let lastUser = messages.last(where: { $0.role == .user }) else { return }
-        if let lastIndex = messages.lastIndex(where: { $0.role == .assistant }) {
-            messages.remove(at: lastIndex)
-        }
-        prompt = lastUser.content
+        guard !isStreaming, !isPreparingScreen else { return }
+        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        do { _ = try configuration.validated() }
+        catch { generationState = .error((error as? KKError) ?? .invalidBaseURL); return }
+        currentCaptureTask?.cancel()
+        activeCaptureID = UUID()
+        if let lastIndex = messages.lastIndex(where: { $0.role == .assistant }) { messages.remove(at: lastIndex) }
         if messages.last?.role == .user { messages.removeLast() }
-        submit()
+        capturedScreenNames = lastUser.screenNames
+        additionalScreenData = lastUser.additionalScreenData
+        screenContextState = lastUser.screenData.map(ScreenContextState.ready) ?? .disabled
+        send(text: lastUser.content, configuration: configuration)
+    }
+
+    var isMultiTurn: Bool { messages.filter { $0.role == .user }.count >= 2 }
+
+    var clipboardTranscript: String {
+        messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { "## \($0.role == .user ? "You" : "kk")\n\n\($0.content)" }
+            .joined(separator: "\n\n")
     }
 
     private func finishThinking() {

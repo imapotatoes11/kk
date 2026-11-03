@@ -9,7 +9,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
 
     init(appState: AppState) {
         let window = KKSettingsWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 640),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -25,7 +25,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         let hostingView = NSHostingView(rootView: view)
         hostingView.sizingOptions = []
         window.contentView = hostingView
-        window.setContentSize(NSSize(width: 640, height: 480))
+        window.setContentSize(NSSize(width: 640, height: 640))
 
         let toolbar = NSToolbar(identifier: "kkSettings")
         toolbar.delegate = self
@@ -73,7 +73,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         window?.toolbar?.selectedItemIdentifier = sender.itemIdentifier
         if let window {
             let top = window.frame.maxY
-            let desiredHeight: CGFloat = section == .customization ? 640 : (section == .shortcuts || section == .annotations || section == .about ? 600 : 480)
+            let desiredHeight: CGFloat = section == .general ? 640 : (section == .shortcuts || section == .annotations || section == .about ? 600 : 480)
             let height = min(desiredHeight, max(360, (window.screen?.visibleFrame.height ?? 1000) - 120))
             window.setContentSize(NSSize(width: 640, height: height))
             window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))

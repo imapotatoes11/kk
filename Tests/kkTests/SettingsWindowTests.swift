@@ -1,8 +1,29 @@
 import AppKit
 import XCTest
+import SwiftUI
 @testable import kk
 
 final class SettingsWindowTests: XCTestCase {
+    @MainActor
+    func testSettingsStaysAtNormalLevelWithAnnotationSessionAndFloatingPopup() async throws {
+        _ = NSApplication.shared
+        let preferences = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let state = AppState(preferences: preferences, keychain: TestKeychain())
+        let screen = try XCTUnwrap(NSScreen.main)
+        state.annotations.begin(on: screen)
+        state.panelController.show(rootView: AnyView(Color.clear), on: screen)
+        defer { state.settingsWindow?.close(); state.annotations.end(); state.panelController.hide() }
+        for alwaysOnTop in [true, false] {
+            preferences.alwaysOnTop = alwaysOnTop
+            state.openSettings()
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(state.settingsWindow?.level, .normal, "Settings must not inherit popup/annotation elevation")
+            XCTAssertTrue(state.annotations.isActive)
+            XCTAssertGreaterThan(state.panelController.panel?.level.rawValue ?? 0, NSWindow.Level.normal.rawValue)
+            state.settingsWindow?.close()
+        }
+    }
+
     @MainActor
     func testSettingsWindowOpensAndCanReopen() {
         _ = NSApplication.shared
@@ -15,7 +36,7 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(window?.contentView?.bounds.height ?? 0, 300)
         XCTAssertGreaterThanOrEqual(window?.contentView?.bounds.width ?? 0, 460)
         XCTAssertEqual(window?.toolbar?.displayMode, .iconAndLabel)
-        XCTAssertEqual(window?.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.map(\.label), ["Connection", "Customization", "Annotations", "Shortcuts", "About"])
+        XCTAssertEqual(window?.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.map(\.label), ["General", "Connection", "Annotations", "Shortcuts", "About"])
         window?.close()
         XCTAssertFalse(window?.isVisible == true)
         state.openSettings()

@@ -143,7 +143,7 @@ final class PermissionAssistant {
         panel.setFrame(Self.helperFrame(beside: settingsFrame, visible: screen.visibleFrame, size: panel.frame.size), display: true)
         if let settingsFrame, !guidance.accessEnabled, !guidance.appDropped, guidance.preparationError == nil {
             let source = CGPoint(x: panel.frame.minX + 44, y: panel.frame.midY + 28)
-            let target = CGPoint(x: min(max(source.x, settingsFrame.minX + 32), settingsFrame.maxX - 32), y: settingsFrame.minY + 28)
+            let target = PermissionArrowGeometry.target(in: settingsFrame)
             dragArrow.show(from: source, to: target)
         } else { dragArrow.hide() }
     }

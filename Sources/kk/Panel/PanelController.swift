@@ -10,6 +10,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var preferenceSubscription: AnyCancellable?
     private var lastPopupSize: PopupSize
     private var hasExpanded = false
+    private var responseContentHeight: CGFloat?
+    private var responseWidth: CGFloat?
+    private var responseStreaming = false
+    private var layoutUpdate: Task<Void, Never>?
+    private var lastOpeningWidth: CGFloat = 0
     private var minimumContentHeight: CGFloat = 64
     private var frameAnimation: Task<Void, Never>?
     private var animationTarget: NSRect?
@@ -43,6 +48,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.screen = screen
         hasUserResized = false
         hasExpanded = false
+        responseContentHeight = nil
+        responseWidth = nil
+        responseStreaming = false
+        lastOpeningWidth = preferences.openingWidth
         minimumContentHeight = preferences.popupSize == .compact ? 56 : 121
         lastPopupSize = preferences.popupSize
 
@@ -55,12 +64,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.setFrame(PanelPositioning.initialFrame(
             on: screen,
             contentHeight: compact ? 56 : 121,
-            contentWidth: compact ? UIConstants.compactPanelWidth : UIConstants.panelWidth,
+            contentWidth: preferences.openingWidth,
             position: preferences.popupOpeningPosition,
             cursor: cursorLocation ?? NSEvent.mouseLocation
         ), display: false)
-        panel.orderFrontRegardless()
-        panel.makeKey()
+        panel.minSize.width = min(preferences.openingWidth, screen.visibleFrame.width - 32)
+        panel.maxSize = NSSize(width: max(UIConstants.panelWidth, preferences.openingWidth), height: UIConstants.panelMaxHeight)
+        panel.focusPrompt()
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -70,23 +80,49 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel?.orderOut(nil)
     }
 
-    /// Content can raise the minimum height, but only the first question expands compact mode.
-    /// Token-by-token rendering therefore never restarts the expansion animation.
-    func updateLayout(hasResponse: Bool, minimumHeight: CGFloat) {
+    /// Measurements coalesce while streaming. An active transition always finishes before
+    /// applying a newer target, rather than restarting at every token or intermediate frame.
+    func updateLayout(hasResponse: Bool, minimumHeight: CGFloat, contentHeight: CGFloat? = nil, preferredWidth: CGFloat? = nil, streaming: Bool = false) {
         hasExpanded = hasExpanded || hasResponse
         minimumContentHeight = minimumHeight
-        guard !isDragging else { return }
-        guard let panel, let screen = panel.screen ?? screen else { return }
-        panel.minSize.height = min(minimumHeight, screen.visibleFrame.height - 32)
+        if let contentHeight { responseContentHeight = contentHeight }
+        if let preferredWidth { responseWidth = preferredWidth }
+        responseStreaming = streaming
+        if hasResponse && contentHeight != nil {
+            guard layoutUpdate == nil else { return }
+            layoutUpdate = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(140))
+                guard !Task.isCancelled, let self else { return }
+                self.layoutUpdate = nil
+                self.applyLayout()
+            }
+        } else { applyLayout() }
+    }
+
+    private func applyLayout() {
+        guard !isDragging, let panel, let screen = panel.screen ?? screen else { return }
+        let openingWidth = min(preferences.openingWidth, screen.visibleFrame.width - 32)
+        let minHeight = min(minimumContentHeight, UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
+        panel.minSize = NSSize(width: openingWidth, height: minHeight)
+        panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: min(UIConstants.panelMaxHeight, screen.visibleFrame.height - 32))
         if hasUserResized {
-            resize(height: panel.frame.height, minimumHeight: minimumHeight, animated: false)
+            var frame = panel.frame
+            frame.size.width = min(panel.maxSize.width, max(openingWidth, frame.width))
+            frame.size.height = min(panel.maxSize.height, max(minHeight, frame.height))
+            frame.origin.y = panel.frame.maxY - frame.height
+            setFrame(PanelPositioning.clamped(frame, to: screen), animated: false)
             return
         }
-        let fullSize = preferences.popupSize == .fullSize || hasExpanded
-        let base = isAnimatingLayout ? (animationTarget ?? panel.frame) : panel.frame
-        let width = fullSize ? UIConstants.panelWidth : UIConstants.compactPanelWidth
-        let height = hasExpanded ? max(minimumHeight, UIConstants.panelMaxHeight) : minimumHeight
-        let frame = NSRect(x: base.midX - width / 2, y: base.maxY - height, width: width, height: height)
+        guard !isAnimatingLayout else { return }
+        var width = hasExpanded ? (responseWidth ?? max(UIConstants.panelWidth, openingWidth)) : openingWidth
+        var height = hasExpanded ? (responseContentHeight ?? UIConstants.panelMaxHeight) : minHeight
+        width = min(panel.maxSize.width, max(openingWidth, width))
+        height = min(panel.maxSize.height, max(minHeight, height))
+        if hasExpanded && responseStreaming {
+            width = max(width, panel.frame.width)
+            height = max(height, panel.frame.height)
+        }
+        let frame = NSRect(x: panel.frame.midX - width / 2, y: panel.frame.maxY - height, width: width, height: height)
         setFrame(PanelPositioning.clamped(frame, to: screen), animated: panel.isVisible)
     }
 
@@ -145,7 +181,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         dragScreen = nil
         alignmentGuides.hide()
         if wasDragging && restoreLayout && isVisible {
-            updateLayout(hasResponse: hasExpanded, minimumHeight: minimumContentHeight)
+            applyLayout()
         }
     }
 
@@ -155,12 +191,13 @@ final class PanelController: NSObject, NSWindowDelegate {
             currentSnap = nil
             alignmentGuides.hide()
         }
-        if preferences.popupSize != lastPopupSize {
+        if preferences.popupSize != lastPopupSize || preferences.openingWidth != lastOpeningWidth {
+            lastOpeningWidth = preferences.openingWidth
             lastPopupSize = preferences.popupSize
             hasUserResized = false
         }
         guard isVisible else { return }
-        updateLayout(hasResponse: hasExpanded, minimumHeight: minimumContentHeight)
+        applyLayout()
     }
 
     private func applyWindowAppearance() {
@@ -206,10 +243,13 @@ final class PanelController: NSObject, NSWindowDelegate {
             guard !Task.isCancelled else { return }
             self?.frameAnimation = nil
             self?.animationTarget = nil
+            self?.applyLayout()
         }
     }
 
     private func stopFrameAnimation() {
+        layoutUpdate?.cancel()
+        layoutUpdate = nil
         frameAnimation?.cancel()
         frameAnimation = nil
         animationTarget = nil

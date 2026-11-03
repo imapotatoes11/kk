@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PopupBackground: View {
     let material: PopupMaterial
+    var cornerRadius: CGFloat = PopupGeometry.cornerRadius
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
@@ -10,7 +11,7 @@ struct PopupBackground: View {
             Color(nsColor: .windowBackgroundColor)
         } else if material == .liquidGlass {
             if #available(macOS 26, *) {
-                LiquidGlassPopupMaterial()
+                LiquidGlassPopupMaterial(cornerRadius: cornerRadius)
             } else {
                 TranslucentPopupMaterial()
             }
@@ -22,9 +23,10 @@ struct PopupBackground: View {
 
 @available(macOS 26, *)
 struct LiquidGlassPopupMaterial: View {
+    var cornerRadius: CGFloat = PopupGeometry.cornerRadius
     var body: some View {
         Color.clear
-            .glassEffect(.regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.15)), in: RoundedRectangle(cornerRadius: PopupGeometry.cornerRadius))
+            .glassEffect(.regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.15)), in: RoundedRectangle(cornerRadius: cornerRadius))
             .materialActiveAppearance(.active)
     }
 }

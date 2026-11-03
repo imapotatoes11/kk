@@ -81,3 +81,24 @@ enum CopyShortcutAction: String, CaseIterable, Identifiable {
         }
     }
 }
+
+/// Six deliberate stops, retaining the original 480 / 680 point defaults.
+enum BarWidths {
+    static let compact: [CGFloat] = [440, 480, 520, 560, 600, 640]
+    static let full: [CGFloat] = [520, 560, 620, 680, 720, 760]
+    static let compactDefault = 1
+    static let fullDefault = 3
+    static func clamp(_ level: Int) -> Int { min(5, max(0, level)) }
+}
+
+enum CaptureDisplayMode: String, CaseIterable, Identifiable {
+    case active, cursor, all
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .active: "Active desktop"
+        case .cursor: "Desktop at cursor"
+        case .all: "All desktops"
+        }
+    }
+}

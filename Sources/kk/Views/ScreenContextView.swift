@@ -15,7 +15,7 @@ struct ScreenContextView: View {
                 }
             }
 
-            if !chat.hasSubmitted {
+            if !chat.isStreaming {
                 Text(destinationText)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -53,7 +53,7 @@ struct ScreenContextView: View {
 
     private var contextActions: some View {
         HStack(spacing: 10) {
-            if !chat.hasSubmitted {
+            if !chat.isStreaming {
                 switch chat.screenContextState {
                 case .capturing, .ready:
                     Button("Remove screen") { chat.removeScreen() }
@@ -77,7 +77,7 @@ struct ScreenContextView: View {
         case .permissionRequired: "Screen access is optional; text-only sending remains available"
         case .failed(let reason): "\(reason) Text-only sending remains available."
         case .disabled: "No screen attached; this question will be text only"
-        case .sent: "Sent to \(chat.endpointHost) with your first question"
+        case .sent: "Sent to \(chat.endpointHost) with your question"
         }
     }
 
@@ -98,23 +98,32 @@ struct ScreenPreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(chat.hasSubmitted ? "Sent screen" : "Screen preview")
+            Text(chat.isStreaming ? "Sent screen" : "Screen preview")
                 .font(.headline)
-            if let data = chat.currentPreviewData, let image = NSImage(data: data) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: UIConstants.previewMaxWidth, maxHeight: UIConstants.previewMaxHeight)
-                    .accessibilityLabel("Captured current screen")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(chat.currentPreviewImages.enumerated()), id: \.offset) { index, data in
+                        if let image = NSImage(data: data) {
+                            if chat.currentPreviewImages.count > 1 {
+                                Text(chat.capturedScreenNames.indices.contains(index) ? "\(index + 1). \(chat.capturedScreenNames[index])" : "Display \(index + 1)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Image(nsImage: image).resizable().scaledToFit()
+                                .frame(maxWidth: UIConstants.previewMaxWidth, maxHeight: UIConstants.previewMaxHeight)
+                                .accessibilityLabel("Captured display \(index + 1)")
+                        }
+                    }
+                }
             }
-            if !chat.hasSubmitted && chat.preferences.annotationsEnabled && !chat.preferences.freezeScreen {
-                Text("Live screen refreshes when you send.")
+            .frame(maxHeight: UIConstants.previewMaxHeight)
+            if !chat.isStreaming && chat.preferences.annotationsEnabled && !chat.preferences.freezeScreen {
+                Text("Live screens refresh when you send.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text(chat.hasSubmitted ? "Sent to \(chat.endpointHost) with your first question" : "Will send to \(chat.endpointHost) when you ask")
+            Text(chat.isStreaming ? "Sent to \(chat.endpointHost) with your question" : "Will send to \(chat.endpointHost) when you ask")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-            if !chat.hasSubmitted {
+            if !chat.isStreaming {
                 Button("Remove screen") {
                     chat.removeScreen()
                     chat.isPreviewPresented = false

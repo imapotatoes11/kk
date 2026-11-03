@@ -1,10 +1,35 @@
 import AppKit
 
+/// A solid curved gesture from the draggable app icon toward the app list.
+enum PermissionArrowGeometry {
+    static func target(in settings: CGRect) -> CGPoint {
+        // Aim at the app-list footer, beyond the Settings sidebar.
+        CGPoint(x: settings.minX + min(280, settings.width * 0.4), y: settings.minY + 20)
+    }
+
+    static func path(from start: CGPoint, to end: CGPoint) -> CGPath {
+        let distance = hypot(end.x - start.x, end.y - start.y)
+        let bend = min(72, max(32, distance * 0.45))
+        let control1 = CGPoint(x: start.x - bend, y: start.y + (end.y - start.y) * 0.25)
+        let control2 = CGPoint(x: end.x - bend, y: end.y - (end.y - start.y) * 0.25)
+        let path = CGMutablePath()
+        path.move(to: start)
+        path.addCurve(to: end, control1: control1, control2: control2)
+        let angle = atan2(end.y - control2.y, end.x - control2.x)
+        for offset: CGFloat in [-.pi / 6, .pi / 6] {
+            path.move(to: end)
+            path.addLine(to: CGPoint(x: end.x - 12 * cos(angle + offset), y: end.y - 12 * sin(angle + offset)))
+        }
+        return path
+    }
+}
+
 @MainActor
 final class PermissionDragArrow {
-    private var panel: NSPanel?
+    private(set) var panel: NSPanel?
     func show(from start: CGPoint, to end: CGPoint) {
-        let bounds = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: max(1, abs(start.x - end.x)), height: max(1, abs(start.y - end.y))).insetBy(dx: -24, dy: -24)
+        let path = PermissionArrowGeometry.path(from: start, to: end)
+        let bounds = path.boundingBoxOfPath.insetBy(dx: -8, dy: -8)
         let panel = panel ?? NSPanel(contentRect: bounds, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -13,8 +38,8 @@ final class PermissionDragArrow {
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         let view = ArrowView(frame: CGRect(origin: .zero, size: bounds.size))
-        view.start = CGPoint(x: start.x - bounds.minX, y: start.y - bounds.minY)
-        view.end = CGPoint(x: end.x - bounds.minX, y: end.y - bounds.minY)
+        var transform = CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)
+        view.path = path.copy(using: &transform)
         panel.contentView = view
         panel.setFrame(bounds, display: true)
         panel.orderFrontRegardless()
@@ -22,22 +47,15 @@ final class PermissionDragArrow {
     }
     func hide() { panel?.orderOut(nil); panel = nil }
     private final class ArrowView: NSView {
-        var start = CGPoint.zero
-        var end = CGPoint.zero
+        var path: CGPath?
         override func draw(_ dirtyRect: NSRect) {
-            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            guard let context = NSGraphicsContext.current?.cgContext, let path else { return }
             context.clear(dirtyRect)
-            context.setStrokeColor(NSColor.systemBlue.withAlphaComponent(0.9).cgColor)
-            context.setLineWidth(2.5)
+            context.setStrokeColor(NSColor.systemRed.withAlphaComponent(0.95).cgColor)
+            context.setLineWidth(3)
             context.setLineCap(.round)
-            context.setLineDash(phase: 0, lengths: [5, 5])
-            context.move(to: start); context.addLine(to: end); context.strokePath()
-            context.setLineDash(phase: 0, lengths: [])
-            let angle = atan2(end.y - start.y, end.x - start.x)
-            for offset: CGFloat in [-.pi / 6, .pi / 6] {
-                context.move(to: end)
-                context.addLine(to: CGPoint(x: end.x - 12 * cos(angle + offset), y: end.y - 12 * sin(angle + offset)))
-            }
+            context.setLineJoin(.round)
+            context.addPath(path)
             context.strokePath()
         }
     }

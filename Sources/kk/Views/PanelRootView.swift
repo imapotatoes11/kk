@@ -11,12 +11,12 @@ struct PanelRootView: View {
     var onCopyAnswer: (String) -> Void = { _ in }
     @State private var footerHeight: CGFloat = 76
     @State private var compactHeight: CGFloat = 64
+    @State private var conversationHeight: CGFloat = 80
     @State private var promptHeight: CGFloat = 24
 
     private var compactOpening: Bool { preferences.popupSize == .compact && !chat.hasSubmitted }
     private var cornerRadius: CGFloat { 22 }
     private var needsScreenNotice: Bool {
-        guard !chat.hasSubmitted else { return false }
         switch chat.screenContextState {
         case .permissionRequired, .failed: return true
         default: return false
@@ -45,7 +45,7 @@ struct PanelRootView: View {
                 header
                 Divider()
                 if chat.hasSubmitted {
-                    ConversationView(chat: chat, preferences: preferences, onCopyAnswer: onCopyAnswer)
+                    ConversationView(chat: chat, preferences: preferences, onCopyAnswer: onCopyAnswer, onContentHeight: { conversationHeight = $0; resizePanel() })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     Divider()
                 }
@@ -78,8 +78,11 @@ struct PanelRootView: View {
             resizePanel()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in chat.resumeCaptureIfPermitted() }
-        .onChange(of: chat.messages.count) { _, _ in resizePanel() }
+        .onChange(of: chat.isStreaming) { _, _ in resizePanel() }
+        .onChange(of: chat.messages) { _, _ in resizePanel() }
         .onChange(of: preferences.popupSize) { _, _ in resizePanel() }
+        .onChange(of: preferences.openingWidth) { _, _ in resizePanel() }
+        .onChange(of: preferences.answerTextSize) { _, _ in resizePanel() }
     }
 
     private var branding: some View {
@@ -140,7 +143,7 @@ struct PanelRootView: View {
     }
 
     private var editor: some View {
-        PromptEditor(text: $chat.prompt, isDisabled: chat.isStreaming || chat.isPreparingScreen, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) })
+        PromptEditor(text: $chat.prompt, isDisabled: chat.isPreparingScreen, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) })
             .frame(height: promptHeight)
             .overlay(alignment: .topLeading) {
                 if chat.prompt.isEmpty {
@@ -155,12 +158,12 @@ struct PanelRootView: View {
 
     @ViewBuilder private var screenChip: some View {
         if preferences.showPreviewButton && chat.currentPreviewData != nil {
-            Button(action: chat.togglePreview) { Image(systemName: "rectangle.on.rectangle").frame(width: 40, height: 40).contentShape(Rectangle()) }
-                .help("Screen attached. Sends to \(chat.endpointHost) with your question. Click to preview.")
+            Button(action: chat.togglePreview) { Image(systemName: "rectangle.on.rectangle").frame(width: 40, height: chat.hasSubmitted ? 32 : 40).contentShape(Rectangle()) }
+                .help("\(chat.currentPreviewImages.count) display(s) attached. Sends to \(chat.endpointHost) with your question. Click to preview.")
                 .accessibilityLabel("Preview attached screen")
                 .contextMenu {
                     Button("Preview screen", action: chat.togglePreview)
-                    if !chat.hasSubmitted { Button("Remove screen", action: chat.removeScreen) }
+                    if !chat.isStreaming { Button("Remove screen", action: chat.removeScreen) }
                 }
         }
     }
@@ -172,23 +175,32 @@ struct PanelRootView: View {
             if case .error(let error) = chat.generationState { ErrorView(error: error, onRetry: chat.retry, onOpenSettings: onOpenSettings) }
             HStack(alignment: .bottom, spacing: 0) {
                 HStack(spacing: 0) {
-                    editor.frame(height: max(40, promptHeight))
-                        .modifier(DraggableInsets(horizontal: 0, vertical: max(0, (max(40, promptHeight) - promptHeight) / 2)))
-                    if preferences.showPreviewButton && chat.currentPreviewData != nil { dragGap(4); screenChip.buttonStyle(.plain) }
+                    editor.frame(height: max(24, promptHeight))
+                        .modifier(DraggableInsets(horizontal: 0, vertical: max(0, (max(24, promptHeight) - promptHeight) / 2)))
+                    if chat.hasSubmitted && preferences.annotationsEnabled && !chat.isStreaming {
+                        Button { chat.onAnnotate?() } label: { Image(systemName: "pencil.tip").frame(width: 32, height: 32).contentShape(Rectangle()) }
+                           .buttonStyle(.plain).disabled(chat.currentPreviewData == nil).help("Annotate this screen").accessibilityLabel("Annotate this screen")
+                    }
+                    if preferences.showPreviewButton && chat.currentPreviewData != nil {
+                        screenChip.buttonStyle(.plain)
+                    }
                 }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .frame(minHeight: 32)
+                    .padding(.horizontal, 12).padding(.vertical, 4)
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
                     .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false) }
-                    .modifier(DraggableInsets(horizontal: 12, vertical: 10))
+                    .modifier(DraggableInsets(horizontal: 12, vertical: 4))
                 if preferences.showSubmitButton || chat.isStreaming {
                 dragGap(10)
-                Button {
+                PaletteButton(chat.isStreaming ? "Stop answer" : "Send question", action: {
                     if chat.isStreaming { chat.stop() } else { chat.submit() }
-                } label: {
+                }) {
                     Image(systemName: chat.isStreaming ? "stop.fill" : "arrow.up")
-                        .font(.system(size: 14, weight: .semibold)).frame(width: 28, height: 28)
+                        .font(.system(size: 14, weight: .semibold)).frame(width: 40, height: 40).contentShape(Rectangle())
                 }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 12))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.white)
+                .background(Color.accentColor.opacity(chat.isStreaming || chat.canSend ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 12))
                 .disabled(!chat.isStreaming && !chat.canSend)
                 .help(chat.isStreaming ? "Stop answer" : "Send question (Return)")
                 .accessibilityLabel(chat.isStreaming ? "Stop answer" : "Send question")
@@ -201,22 +213,29 @@ struct PanelRootView: View {
     }
 
     private func resizePanel() {
-        panelController.updateLayout(hasResponse: chat.hasSubmitted, minimumHeight: compactOpening ? compactHeight : 45 + footerHeight + (chat.hasSubmitted ? 80 : 0))
+        let minimum = compactOpening ? compactHeight : (chat.hasSubmitted ? max(220, 45 + footerHeight + 64) : 45 + footerHeight)
+        panelController.updateLayout(hasResponse: chat.hasSubmitted, minimumHeight: minimum,
+            contentHeight: chat.hasSubmitted ? ConversationLayout.height(content: conversationHeight, chrome: 46 + footerHeight, minimum: minimum, streaming: chat.isStreaming) : nil,
+            preferredWidth: chat.hasSubmitted ? ConversationLayout.preferredWidth(messages: chat.messages, minimum: preferences.openingWidth, textSize: preferences.answerTextSize.points) : nil,
+            streaming: chat.isStreaming)
     }
 }
 
 struct UserMessageBubble: View {
     @Environment(\.colorScheme) private var colorScheme
     let text: String
+    @State private var availableWidth: CGFloat = 480
     var body: some View {
         HStack {
             Spacer(minLength: 40)
             ResponseView(markdown: text, isStreaming: false)
+                .frame(width: max(4, ConversationLayout.bubbleWidth(text: text, available: availableWidth) - 28))
                 .accessibilityLabel("Your question")
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
                 .accessibilityLabel("Your question: " + text)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
     }
 }
 
@@ -224,6 +243,7 @@ private struct ConversationView: View {
     @ObservedObject var chat: ChatController
     @ObservedObject var preferences: Preferences
     let onCopyAnswer: (String) -> Void
+    var onContentHeight: (CGFloat) -> Void = { _ in }
     @State private var isNearBottom = true
     @State private var isUserScrolling = false
     @State private var contentHeight: CGFloat = 0
@@ -253,6 +273,7 @@ private struct ConversationView: View {
                     geometry.size.height
                 } action: { height in
                     contentHeight = height
+                    onContentHeight(height)
                 }
             }
             .scrollIndicators(.automatic)
