@@ -18,6 +18,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     private(set) var currentSnap: PanelSnapResult?
     private var dragScreen: NSScreen?
     var onDismiss: (() -> Void)?
+    var annotationLayerActive = false {
+        didSet { applyWindowAppearance() }
+    }
     private(set) var hasUserResized = false
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -162,8 +165,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func applyWindowAppearance() {
         panel?.appearance = preferences.appearance.nsAppearance
-        panel?.level = preferences.alwaysOnTop ? .floating : .normal
-        panel?.isFloatingPanel = preferences.alwaysOnTop
+        // Setting isFloatingPanel can reset AppKit's window level, so apply the explicit level last.
+        panel?.isFloatingPanel = annotationLayerActive || preferences.alwaysOnTop
+        panel?.level = annotationLayerActive ? NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 2) : (preferences.alwaysOnTop ? .floating : .normal)
     }
 
     private func setFrame(_ target: NSRect, animated: Bool) {

@@ -98,7 +98,7 @@ struct ScreenPreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Current screen")
+            Text(chat.hasSubmitted ? "Sent screen" : "Screen preview")
                 .font(.headline)
             if let data = chat.currentPreviewData, let image = NSImage(data: data) {
                 Image(nsImage: image)
@@ -106,6 +106,10 @@ struct ScreenPreviewView: View {
                     .scaledToFit()
                     .frame(maxWidth: UIConstants.previewMaxWidth, maxHeight: UIConstants.previewMaxHeight)
                     .accessibilityLabel("Captured current screen")
+            }
+            if !chat.hasSubmitted && chat.preferences.annotationsEnabled && !chat.preferences.freezeScreen {
+                Text("Live screen refreshes when you send.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Text(chat.hasSubmitted ? "Sent to \(chat.endpointHost) with your first question" : "Will send to \(chat.endpointHost) when you ask")
                 .font(.system(size: 12))

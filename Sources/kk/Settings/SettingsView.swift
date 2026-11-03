@@ -2,12 +2,13 @@ import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable {
-    case connection, customization, shortcuts, about
+    case connection, customization, annotations, shortcuts, about
 
     var title: String {
         switch self {
         case .connection: "Connection"
         case .customization: "Customization"
+        case .annotations: "Annotations"
         case .shortcuts: "Shortcuts"
         case .about: "About"
         }
@@ -17,6 +18,7 @@ enum SettingsSection: String, CaseIterable {
         switch self {
         case .connection: "network"
         case .customization: "paintbrush.pointed"
+        case .annotations: "pencil.tip.crop.circle"
         case .shortcuts: "keyboard"
         case .about: "info.circle"
         }
@@ -42,6 +44,7 @@ struct SettingsView: View {
             switch selection.section {
             case .connection: connection
             case .customization: CustomizationView(preferences: preferences)
+            case .annotations: AnnotationsSettingsView(preferences: preferences)
             case .shortcuts: shortcuts
             case .about: about
             }
@@ -174,6 +177,8 @@ struct SettingsView: View {
                 .font(.callout)
                 .padding(20)
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                LaunchAtLoginView().frame(maxWidth: 280)
+                Button("Show onboarding again") { appState.replayOnboarding() }
                 Text("Built for macOS")
                     .font(.caption)
                     .foregroundStyle(.secondary)

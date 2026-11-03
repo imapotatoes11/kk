@@ -8,7 +8,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
     private var appearanceSubscription: AnyCancellable?
 
     init(appState: AppState) {
-        let window = NSWindow(
+        let window = KKSettingsWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
             styleMask: [.titled, .closable],
             backing: .buffered,
@@ -73,10 +73,19 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         window?.toolbar?.selectedItemIdentifier = sender.itemIdentifier
         if let window {
             let top = window.frame.maxY
-            let desiredHeight: CGFloat = section == .customization ? 640 : (section == .shortcuts ? 600 : 480)
+            let desiredHeight: CGFloat = section == .customization ? 640 : (section == .shortcuts || section == .annotations || section == .about ? 600 : 480)
             let height = min(desiredHeight, max(360, (window.screen?.visibleFrame.height ?? 1000) - 120))
             window.setContentSize(NSSize(width: 640, height: height))
             window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
         }
+    }
+}
+
+final class KKSettingsWindow: NSWindow {
+    var suppressAutomaticKey = false
+    override var canBecomeKey: Bool { !suppressAutomaticKey && super.canBecomeKey }
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown { suppressAutomaticKey = false }
+        super.sendEvent(event)
     }
 }

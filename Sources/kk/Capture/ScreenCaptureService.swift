@@ -2,12 +2,21 @@ import AppKit
 import CoreGraphics
 import ScreenCaptureKit
 
-struct ScreenCaptureService: Sendable {
-    func capture(displayID: CGDirectDisplayID?) async throws -> Data {
-        guard CGPreflightScreenCaptureAccess() else {
-            throw KKError.screenCapturePermission
-        }
+struct ScreenSnapshot: Sendable {
+    let image: CGImage
+    let data: Data
+}
 
+struct ScreenCaptureService: Sendable {
+    var permissionCheck: @Sendable () -> Bool = { CGPreflightScreenCaptureAccess() }
+    var hasPassiveAccess: Bool { permissionCheck() }
+
+    func capture(displayID: CGDirectDisplayID?) async throws -> Data {
+        try await captureSnapshot(displayID: displayID).data
+    }
+
+    func captureSnapshot(displayID: CGDirectDisplayID?) async throws -> ScreenSnapshot {
+        guard hasPassiveAccess else { throw KKError.screenCapturePermission }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             guard let displayID, let display = content.displays.first(where: { $0.displayID == displayID }) else {
@@ -26,37 +35,41 @@ struct ScreenCaptureService: Sendable {
                 throw KKError.screenCaptureFailed("kk couldn't exclude its own panel from the screen capture.")
             }
             let configuration = SCStreamConfiguration()
-            configuration.showsCursor = true
+            configuration.showsCursor = false
             configuration.queueDepth = 1
 
-            let scale = min(1, CaptureConstants.maxLongEdge / CGFloat(max(display.width, display.height)))
-            configuration.width = max(1, Int(CGFloat(display.width) * scale))
-            configuration.height = max(1, Int(CGFloat(display.height) * scale))
+            // Preserve native pixels for a crisp frozen backdrop; only the submitted JPEG is resized.
+            configuration.width = max(1, Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded()))
+            configuration.height = max(1, Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded()))
 
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
-            return try await Task.detached(priority: .userInitiated) {
+            let data = try await Task.detached(priority: .userInitiated) {
                 try ImageProcessor.jpegData(from: image)
             }.value
+            return ScreenSnapshot(image: image, data: data)
         } catch let error as KKError {
             throw error
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            let nsError = error as NSError
+            if nsError.domain == SCStreamErrorDomain && nsError.code == SCStreamError.Code.userDeclined.rawValue {
+                throw KKError.screenCapturePermission
+            }
             throw KKError.screenCaptureFailed(error.localizedDescription)
         }
     }
 
+    func hasAccess() async -> Bool { hasPassiveAccess }
+
+    @MainActor
     func requestAccess() -> Bool {
-        CGRequestScreenCaptureAccess()
+        if hasPassiveAccess { return true }
+        // The drag-to-Settings flow does not need a second native request dialog.
+        openSystemSettings()
+        return hasPassiveAccess
     }
 
-    func openSystemSettings() {
-        let candidates = [
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture"
-        ]
-        for rawValue in candidates {
-            if let url = URL(string: rawValue), NSWorkspace.shared.open(url) { return }
-        }
-    }
+    @MainActor
+    func openSystemSettings() { PermissionAssistant.shared.open() }
 }

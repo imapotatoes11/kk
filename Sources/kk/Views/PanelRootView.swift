@@ -70,6 +70,12 @@ struct PanelRootView: View {
                 .allowsHitTesting(false)
         }
         .popover(isPresented: $chat.isPreviewPresented, arrowEdge: .bottom) { ScreenPreviewView(chat: chat) }
+        .task {
+            while !Task.isCancelled {
+                await chat.refreshScreenAccess()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         .onAppear {
             panelController.panel?.onEscape = { [weak chat = chat] in
                 if chat?.isPreviewPresented == true { chat?.isPreviewPresented = false }
@@ -128,7 +134,7 @@ struct PanelRootView: View {
     }
 
     private var editor: some View {
-        PromptEditor(text: $chat.prompt, isDisabled: chat.isStreaming, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) })
+        PromptEditor(text: $chat.prompt, isDisabled: chat.isStreaming || chat.isPreparingScreen, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) })
             .frame(height: promptHeight)
             .overlay(alignment: .topLeading) {
                 if chat.prompt.isEmpty {

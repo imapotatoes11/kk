@@ -42,10 +42,57 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(snapToDefaultPosition, forKey: Keys.snapToDefaultPosition) }
     }
 
+    @Published var annotationsEnabled: Bool {
+        didSet { defaults.set(annotationsEnabled, forKey: "annotationsEnabled") }
+    }
+    @Published var freezeScreen: Bool {
+        didSet { defaults.set(freezeScreen, forKey: "freezeScreen") }
+    }
+    @Published var annotationTool: AnnotationTool {
+        didSet { defaults.set(annotationTool.rawValue, forKey: "annotationTool") }
+    }
+    @Published var annotationColor: AnnotationColor {
+        didSet { defaults.set(annotationColor.rawValue, forKey: "annotationColor") }
+    }
+    @Published var annotationLineWidth: Int {
+        didSet { defaults.set(annotationLineWidth, forKey: "annotationLineWidth") }
+    }
+
+    @Published var smoothStrokes: Bool { didSet { defaults.set(smoothStrokes, forKey: "smoothStrokes") } }
+    @Published var confirmDiscard: Bool { didSet { defaults.set(confirmDiscard, forKey: "confirmDiscard") } }
+    var onboardingComplete: Bool {
+        get { defaults.bool(forKey: "onboardingComplete") }
+        set { defaults.set(newValue, forKey: "onboardingComplete") }
+    }
+    @Published var annotationBindings: [String: AnnotationShortcut] {
+        didSet { defaults.set(try? JSONEncoder().encode(annotationBindings), forKey: "annotationBindings") }
+    }
+    @Published var annotationReturnKey: AnnotationReturnKey {
+        didSet { defaults.set(annotationReturnKey.rawValue, forKey: "annotationReturnKey") }
+    }
+    var permissionSetupPending: Bool {
+        get { defaults.bool(forKey: "permissionSetupPending") }
+        set { defaults.set(newValue, forKey: "permissionSetupPending") }
+    }
+    @Published var discardStrokeThreshold: Double { didSet { defaults.set(discardStrokeThreshold, forKey: "discardStrokeThreshold") } }
+    @Published var palettePosition: PalettePosition { didSet { defaults.set(palettePosition.rawValue, forKey: "palettePosition") } }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let threshold = defaults.double(forKey: "discardStrokeThreshold")
+        discardStrokeThreshold = threshold.isFinite && (20...600).contains(threshold) ? threshold : 160
+        palettePosition = PalettePosition(rawValue: defaults.string(forKey: "palettePosition") ?? "") ?? .bottom
+        annotationReturnKey = AnnotationReturnKey(rawValue: defaults.string(forKey: "annotationReturnKey") ?? "") ?? .doubleShift
+        annotationBindings = defaults.data(forKey: "annotationBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? AnnotationShortcut.defaults
+        smoothStrokes = defaults.object(forKey: "smoothStrokes") as? Bool ?? true
+        confirmDiscard = defaults.object(forKey: "confirmDiscard") as? Bool ?? true
+        annotationsEnabled = defaults.object(forKey: "annotationsEnabled") as? Bool ?? true
+        freezeScreen = defaults.object(forKey: "freezeScreen") as? Bool ?? true
+        annotationTool = AnnotationTool(rawValue: defaults.string(forKey: "annotationTool") ?? "") ?? .freehand
+        annotationColor = AnnotationColor(rawValue: defaults.string(forKey: "annotationColor") ?? "") ?? .red
+        let weight = defaults.integer(forKey: "annotationLineWidth")
+        annotationLineWidth = [2, 3, 5].contains(weight) ? weight : 3
         baseURL = defaults.string(forKey: Keys.baseURL) ?? Defaults.baseURL
         model = defaults.string(forKey: Keys.model) ?? Defaults.model
         popupSize = PopupSize(rawValue: defaults.string(forKey: Keys.popupSize) ?? "") ?? .fullSize

@@ -15,7 +15,7 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(window?.contentView?.bounds.height ?? 0, 300)
         XCTAssertGreaterThanOrEqual(window?.contentView?.bounds.width ?? 0, 460)
         XCTAssertEqual(window?.toolbar?.displayMode, .iconAndLabel)
-        XCTAssertEqual(window?.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.map(\.label), ["Connection", "Customization", "Shortcuts", "About"])
+        XCTAssertEqual(window?.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.map(\.label), ["Connection", "Customization", "Annotations", "Shortcuts", "About"])
         window?.close()
         XCTAssertFalse(window?.isVisible == true)
         state.openSettings()
@@ -63,5 +63,30 @@ extension SettingsWindowTests {
         window.close()
         window.orderFront(nil)
         XCTAssertEqual(controller.selection.section, .about)
+    }
+}
+
+extension SettingsWindowTests {
+    @MainActor
+    func testOnboardingUsesBorderlessGlassWindow() async throws {
+        _ = NSApplication.shared
+        let state = AppState(preferences: Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!), keychain: TestKeychain())
+        let controller = OnboardingController(appState: state, completion: {})
+        let window = try XCTUnwrap(controller.window)
+        defer { window.close() }
+        XCTAssertFalse(window.styleMask.contains(.titled))
+        XCTAssertNil(window.standardWindowButton(.closeButton))
+        XCTAssertFalse(window.isOpaque)
+        XCTAssertTrue(window.canBecomeKey)
+        window.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(200))
+        let view = try XCTUnwrap(window.contentView)
+        view.layoutSubtreeIfNeeded()
+        if let directory = ProcessInfo.processInfo.environment["KK_RENDER_DIR"] {
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("onboarding.png"))
+        }
     }
 }
