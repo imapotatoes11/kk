@@ -43,6 +43,7 @@ final class AppState: ObservableObject {
     private var permissionSetupWindows: [NSWindow] = []
     private var permissionRelaunchInProgress = false
     private var onboarding: OnboardingController?
+    var onboardingWindow: NSWindow? { onboarding?.window }
     private var shortcutTask: Task<Void, Never>?
     private var settingsController: SettingsWindowController?
     private(set) var settingsWindow: NSWindow?
@@ -281,7 +282,7 @@ final class AppState: ObservableObject {
                 self.settingsWindow?.level = .normal
                 Task { @MainActor in
                     await Task.yield()
-                    if !NSApp.windows.contains(where: { $0 is KKSettingsWindow && $0.isVisible }) { NSApp.setActivationPolicy(.accessory) }
+                    Self.refreshActivationPolicy()
                 }
                 if self.panelController.isVisible { self.annotations.resume() }
             }
@@ -313,10 +314,15 @@ final class AppState: ObservableObject {
         presentOnboarding()
     }
 
+    static func refreshActivationPolicy() {
+        let hasWindow = NSApp.windows.contains { ($0 is KKSettingsWindow || $0 is OnboardingWindow) && $0.isVisible }
+        NSApp.setActivationPolicy(hasWindow ? .regular : .accessory)
+    }
+
     private func presentOnboarding() {
+        if onboarding?.window?.isVisible == true { onboarding?.showWindow(nil); return }
         onboarding = OnboardingController(appState: self) { [weak self] in self?.openPanel() }
         onboarding?.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     private var shouldDismissShortDraft: Bool {
@@ -344,6 +350,7 @@ final class AppState: ObservableObject {
     private func openPanel() {
         guard !permissionSetupActive else { return }
         guard !panelController.isVisible else { return }
+        if onboarding?.window?.isVisible == true { onboarding?.showWindow(nil); return }
 
         if !preferences.onboardingComplete {
             presentOnboarding()

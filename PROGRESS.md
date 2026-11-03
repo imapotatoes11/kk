@@ -4,6 +4,8 @@ Last updated: 2026-11-03
 
 ## Current work
 
+- 2026-11-03: Onboarding focus fix for v0.9.0 build 901: onboarding explicitly activates and becomes key across the menu/settings close handoff, stays in regular activation mode while visible, reuses its existing window, and restores accessory mode after foreground windows close. 102/102 tests and Release build passed; verified replacement ZIP/DMG signatures, versions, identical binaries, and Applications shortcut. Updating the existing prerelease/tag/assets as requested.
+
 - 2026-11-03: v0.9.0 prerelease preparation: optimized arm64 Release build passed, 101 regressions plus a temporary native screenshot fixture passed (102 total), README previews reviewed, and version/build metadata set to 0.9.0/900. Ad-hoc-signed app ZIP and DMG verified by extraction/read-only mount, including matching binaries/signatures, icon, and /Applications shortcut. SHA-256 checksums generated. User authorized committing/pushing the README update alongside release preparation; GitHub prerelease publication is the final step. No Developer ID/notarization identity configured; release notes disclose this.
 
 - 2026-11-03: Adding configurable V pointer shortcut with existing-binding migration/conflict protection, palette key label, and shared 48-point height/18-point inner radius for pointer and tool selection backgrounds. Completed: 101/101 tests, native palette render, Xcode Debug build, signature, and diff checks passed. Default V is customizable, respects existing conflicts and explicit clearing, and is limited to annotation focus. Signed replacement delivered; no commits or pushes.
@@ -73,6 +75,8 @@ Last updated: 2026-11-03
 - Keep this file updated at each meaningful implementation or verification milestone.
 
 ## Verification log
+
+- 2026-11-03: Onboarding key-window regression passes for first-run and replay from Settings: samples focus over 400 ms after presentation, verifies regular activation policy and no competing popup, reuses onboarding on the shortcut, allows intentional focus changes, and restores accessory mode on close. 102/102 full-suite tests passed; v0.9.0 Release build 901 passed with verified ZIP/DMG packages.
 
 - 2026-11-03: Pointer/radius polish: 101/101 tests, Xcode Debug build, signature, and diff checks passed. New native regression covers pointer switching/click-through, returning to drawing, a customized key, and not intercepting text input. Migration checks preserve conflicting V assignments and cleared pointer keys. Reviewed the selected pointer palette render with its customized label; all selected tool backgrounds now share Ask kk’s 48-point height and radius 18 = outer 22 minus padding 4. Stable signed delivery `DerivedData/kk.app`; no commits or pushes.
 

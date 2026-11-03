@@ -4,7 +4,8 @@ import KeyboardShortcuts
 import SwiftUI
 
 @MainActor
-final class OnboardingController: NSWindowController {
+final class OnboardingController: NSWindowController, NSWindowDelegate {
+    private var presentation: Task<Void, Never>?
     init(appState: AppState, completion: @escaping () -> Void) {
         let window = OnboardingWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 380), styleMask: [.borderless], backing: .buffered, defer: false)
         window.title = "Welcome to kk"
@@ -14,6 +15,7 @@ final class OnboardingController: NSWindowController {
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        window.delegate = self
         window.contentView = NSHostingView(rootView: OnboardingView(state: appState) { [weak window] in
             appState.preferences.onboardingComplete = true
             window?.close()
@@ -22,6 +24,29 @@ final class OnboardingController: NSWindowController {
         window.appearance = appState.preferences.appearance.nsAppearance
         window.center()
     }
+    override func showWindow(_ sender: Any?) {
+        presentation?.cancel()
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(sender)
+        // Menu tracking and the source Settings close finish on the next run loop.
+        // Restore key status once after that handoff; never keep stealing focus.
+        presentation = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let window = self?.window, window.isVisible else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        presentation?.cancel()
+        Task { @MainActor in
+            await Task.yield()
+            AppState.refreshActivationPolicy()
+        }
+    }
+
     required init?(coder: NSCoder) { nil }
 }
 
