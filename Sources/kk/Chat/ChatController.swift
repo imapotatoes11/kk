@@ -43,12 +43,14 @@ final class ChatController: ObservableObject {
         preferences: Preferences,
         keychain: APIKeyStoring,
         captureService: ScreenCaptureService,
-        apiClient: OpenAICompatibleClient
+        apiClient: OpenAICompatibleClient,
+        initialScreenContext: ScreenContextState = .disabled
     ) {
         self.preferences = preferences
         self.keychain = keychain
         self.captureService = captureService
         self.apiClient = apiClient
+        self.screenContextState = initialScreenContext
     }
 
     func reset() {
@@ -174,17 +176,31 @@ final class ChatController: ObservableObject {
         prompt = ""
         messages.append(ChatMessage(role: .user, content: text))
         let assistantID = UUID()
-        messages.append(ChatMessage(id: assistantID, role: .assistant, content: ""))
+        var assistant = ChatMessage(id: assistantID, role: .assistant, content: "")
+        assistant.generationStartedAt = .now
+        messages.append(assistant)
         generationState = .streaming
 
         currentGenerationTask = Task { [weak self, apiClient] in
+            defer {
+                if self?.activeGenerationID == generationID { self?.finishThinking() }
+            }
             do {
                 for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
                     try Task.checkCancellation()
                     guard let self else { return }
                     guard self.activeGenerationID == generationID else { return }
                     if let index = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                        self.messages[index].content.append(delta)
+                        switch delta {
+                        case .content(let text):
+                            if self.messages[index].reasoningStartedAt != nil && self.messages[index].reasoningEndedAt == nil {
+                                self.messages[index].reasoningEndedAt = .now
+                            }
+                            self.messages[index].content.append(text)
+                        case .reasoning(let text):
+                            if self.messages[index].reasoningStartedAt == nil { self.messages[index].reasoningStartedAt = .now }
+                            self.messages[index].reasoning.append(text)
+                        }
                     }
                 }
                 guard let self else { return }
@@ -217,6 +233,7 @@ final class ChatController: ObservableObject {
 
     func stop() {
         guard isStreaming else { return }
+        finishThinking()
         activeGenerationID = UUID()
         currentGenerationTask?.cancel()
         currentGenerationTask = nil
@@ -233,10 +250,11 @@ final class ChatController: ObservableObject {
         submit()
     }
 
-    func copyLastAnswer() {
-        guard let answer = messages.last(where: { $0.role == .assistant }), !answer.content.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(answer.content, forType: .string)
+    private func finishThinking() {
+        guard let index = messages.lastIndex(where: { $0.role == .assistant }),
+              messages[index].reasoningStartedAt != nil,
+              messages[index].reasoningEndedAt == nil else { return }
+        messages[index].reasoningEndedAt = .now
     }
 
 }

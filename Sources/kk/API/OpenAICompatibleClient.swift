@@ -6,7 +6,7 @@ struct OpenAICompatibleClient: Sendable {
     func streamCompletion(
         request: ChatCompletionRequest,
         configuration: APIConfiguration
-    ) -> AsyncThrowingStream<String, Error> {
+    ) -> AsyncThrowingStream<CompletionDelta, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -25,6 +25,7 @@ struct OpenAICompatibleClient: Sendable {
                     var parser = SSEParser()
                     var rawLines: [String] = []
                     var emittedContent = false
+                    var emittedAnswer = false
                     var finished = false
 
                     func consumeLine(_ line: String) throws {
@@ -36,7 +37,8 @@ struct OpenAICompatibleClient: Sendable {
                                 break
                             }
                             let emitted = try emit(event: event, continuation: continuation)
-                            emittedContent = emittedContent || emitted
+                            emittedContent = emittedContent || emitted.any
+                            emittedAnswer = emittedAnswer || emitted.answer
                         }
                     }
 
@@ -65,7 +67,8 @@ struct OpenAICompatibleClient: Sendable {
                                 finished = true
                             } else {
                                 let emitted = try emit(event: event, continuation: continuation)
-                                emittedContent = emittedContent || emitted
+                                emittedContent = emittedContent || emitted.any
+                                emittedAnswer = emittedAnswer || emitted.answer
                             }
                         }
                     }
@@ -78,7 +81,11 @@ struct OpenAICompatibleClient: Sendable {
                         if let completion = try? JSONDecoder().decode(CompletionResponse.self, from: rawData),
                            let content = completion.choices.first?.message.content,
                            !content.isEmpty {
-                            continuation.yield(content)
+                            if let reasoning = completion.choices.first?.message.reasoning, !reasoning.isEmpty {
+                                continuation.yield(.reasoning(reasoning))
+                            }
+                            continuation.yield(.content(content))
+                            emittedAnswer = true
                         } else if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: rawData),
                                   let message = apiError.error?.message {
                             throw KKError.streamFailed(message)
@@ -87,6 +94,9 @@ struct OpenAICompatibleClient: Sendable {
                         }
                     }
 
+                    guard emittedAnswer else {
+                        throw KKError.streamFailed("The provider returned thinking without an answer. Please retry.")
+                    }
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.finish(throwing: CancellationError())
@@ -117,19 +127,24 @@ struct OpenAICompatibleClient: Sendable {
         return result
     }
 
-    private func emit(event: String, continuation: AsyncThrowingStream<String, Error>.Continuation) throws -> Bool {
-        guard let data = event.data(using: .utf8) else { return false }
-
+    private func emit(event: String, continuation: AsyncThrowingStream<CompletionDelta, Error>.Continuation) throws -> (any: Bool, answer: Bool) {
+        guard let data = event.data(using: .utf8) else { return (false, false) }
         if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: data),
            let message = apiError.error?.message {
             throw KKError.streamFailed(message)
         }
-
         guard let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data),
-              let content = chunk.choices.first?.delta.content,
-              !content.isEmpty else { return false }
-        continuation.yield(content)
-        return true
+              let delta = chunk.choices.first?.delta else { return (false, false) }
+        var emitted = false
+        if let reasoning = delta.reasoning, !reasoning.isEmpty {
+            continuation.yield(.reasoning(reasoning))
+            emitted = true
+        }
+        if let content = delta.content, !content.isEmpty {
+            continuation.yield(.content(content))
+            return (true, true)
+        }
+        return (emitted, false)
     }
 
     private func collect(_ bytes: URLSession.AsyncBytes) async throws -> Data {

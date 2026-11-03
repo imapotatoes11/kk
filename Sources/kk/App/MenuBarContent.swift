@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import KeyboardShortcuts
 
 struct MenuBarContent: View {
     @EnvironmentObject private var appState: AppState
@@ -8,13 +9,14 @@ struct MenuBarContent: View {
         Button("Ask kk") {
             appState.askFromMenu()
         }
-        .keyboardShortcut("k", modifiers: [.command, .option])
+        .globalKeyboardShortcut(.askKK)
 
         Divider()
 
         Button("Settings…") {
             appState.openSettings()
         }
+        .keyboardShortcut(",", modifiers: .command)
 
         Divider()
 

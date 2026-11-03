@@ -7,33 +7,11 @@ struct ScreenContextView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Button {
-                    if chat.currentPreviewData != nil { chat.togglePreview() }
-                } label: {
-                    Label(chat.screenContextState.label, systemImage: iconName)
-                        .foregroundStyle(.primary)
-                }
-                .buttonStyle(.plain)
-                .disabled(chat.currentPreviewData == nil)
-                .help(chat.currentPreviewData == nil ? chat.screenContextState.label : "Preview captured screen")
-
-                Spacer(minLength: 4)
-
-                if !chat.hasSubmitted {
-                    switch chat.screenContextState {
-                    case .capturing, .ready:
-                        Button("Remove screen") { chat.removeScreen() }
-                            .buttonStyle(.link)
-                            .accessibilityLabel("Remove screen")
-                    case .permissionRequired:
-                        Button("Grant access") { chat.requestScreenAccess() }
-                            .buttonStyle(.link)
-                        Button("Open System Settings") { chat.openSystemSettings() }
-                            .buttonStyle(.link)
-                    default:
-                        EmptyView()
-                    }
+            ViewThatFits(in: .horizontal) {
+                contextRow
+                VStack(alignment: .leading, spacing: 8) {
+                    contextLabel
+                    contextActions
                 }
             }
 
@@ -41,7 +19,7 @@ struct ScreenContextView: View {
                 Text(destinationText)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel(destinationText)
             } else if chat.currentPreviewData == nil {
                 Text("Text only")
@@ -50,10 +28,47 @@ struct ScreenContextView: View {
             }
         }
         .font(.system(size: 12))
-        .popover(isPresented: $chat.isPreviewPresented, arrowEdge: .bottom) {
-            ScreenPreviewView(chat: chat)
-        }
         .accessibilityElement(children: .contain)
+    }
+
+    private var contextRow: some View {
+        HStack(spacing: 8) {
+            contextLabel
+            Spacer(minLength: 4)
+            contextActions
+        }
+    }
+
+    private var contextLabel: some View {
+        Button {
+            if chat.currentPreviewData != nil { chat.togglePreview() }
+        } label: {
+            Label(chat.screenContextState.label, systemImage: iconName)
+                .foregroundStyle(.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(chat.currentPreviewData == nil)
+        .help(chat.currentPreviewData == nil ? chat.screenContextState.label : "Preview captured screen")
+    }
+
+    private var contextActions: some View {
+        HStack(spacing: 10) {
+            if !chat.hasSubmitted {
+                switch chat.screenContextState {
+                case .capturing, .ready:
+                    Button("Remove screen") { chat.removeScreen() }
+                        .buttonStyle(.link)
+                        .accessibilityLabel("Remove screen")
+                case .permissionRequired:
+                    Button("Grant access") { chat.requestScreenAccess() }
+                        .buttonStyle(.link)
+                    Button("Open System Settings") { chat.openSystemSettings() }
+                        .buttonStyle(.link)
+                default:
+                    EmptyView()
+                }
+            }
+        }
     }
 
     private var destinationText: String {
@@ -78,7 +93,7 @@ struct ScreenContextView: View {
     }
 }
 
-private struct ScreenPreviewView: View {
+struct ScreenPreviewView: View {
     @ObservedObject var chat: ChatController
 
     var body: some View {

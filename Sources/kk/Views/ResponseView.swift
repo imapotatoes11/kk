@@ -2,30 +2,66 @@ import MarkdownView
 import SwiftUI
 
 struct ResponseView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let markdown: String
     let isStreaming: Bool
-    @State private var markdownSource = StreamingMarkdownSource()
+    var textSize: CGFloat = 14
 
     var body: some View {
-        StreamingMarkdownReader(markdownSource) { parseResult in
-            MarkdownView(parseResult)
-                .font(.system(size: 14), for: .body)
-                .markdownElementRenderer(.image(ExternalImagePlaceholderRenderer(), urlScheme: "http"))
-                .markdownElementRenderer(.image(ExternalImagePlaceholderRenderer(), urlScheme: "https"))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
+        Group {
+            if isStreaming {
+                StreamingResponse(markdown: markdown)
+            } else {
+                // A completed answer must not depend on an already-finished update stream.
+                // This also gives reference links, tables and math a final full parse.
+                MarkdownReader(markdown) { result in
+                    MarkdownView(result)
+                        .foregroundColor(colorScheme == .dark ? .white : .primary)
+                }
+            }
         }
+        .markdownFontGroup(AnswerFonts(size: textSize))
+        .foregroundStyle(colorScheme == .dark ? Color.white : Color.primary)
+        .foregroundColor(colorScheme == .dark ? .white : .primary)
         .markdownMathRenderingEnabled()
+        .markdownElementRenderer(.image(ExternalImagePlaceholderRenderer(), urlScheme: "http"))
+        .markdownElementRenderer(.image(ExternalImagePlaceholderRenderer(), urlScheme: "https"))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
         .accessibilityLabel(isStreaming ? "Answer streaming" : "Assistant answer")
-        .onAppear {
-            markdownSource.text = markdown
-            if !isStreaming { markdownSource.finishStreaming() }
+    }
+}
+
+private struct AnswerFonts: MarkdownFontGroup {
+    let size: CGFloat
+    var body: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
+    var blockQuote: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
+    var tableBody: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
+    var tableHeader: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size, weight: .semibold) }
+    var codeBlock: any CustomCTFontConvertible { NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) }
+    var inlineMath: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
+    var displayMath: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size + 2) }
+}
+
+private struct StreamingResponse: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let markdown: String
+    @State private var source: StreamingMarkdownSource
+
+    init(markdown: String) {
+        self.markdown = markdown
+        _source = State(initialValue: StreamingMarkdownSource(markdown))
+    }
+
+    var body: some View {
+        StreamingMarkdownReader(source) { parseResult in
+            MarkdownView(parseResult)
+                .foregroundStyle(colorScheme == .dark ? Color.white : Color.primary)
+                .foregroundColor(colorScheme == .dark ? .white : .primary)
         }
         .onChange(of: markdown) { _, value in
-            markdownSource.text = value
-        }
-        .onChange(of: isStreaming) { _, streaming in
-            if !streaming { markdownSource.finishStreaming() }
+            source.text = value
         }
     }
 }

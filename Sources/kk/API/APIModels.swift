@@ -51,11 +51,7 @@ enum ContentPart: Encodable, Sendable {
 
 struct StreamChunk: Decodable {
     struct Choice: Decodable {
-        struct Delta: Decodable {
-            let content: String?
-        }
-
-        let delta: Delta
+        let delta: AssistantDelta
     }
 
     let choices: [Choice]
@@ -63,14 +59,47 @@ struct StreamChunk: Decodable {
 
 struct CompletionResponse: Decodable {
     struct Choice: Decodable {
-        struct Message: Decodable {
-            let content: String?
-        }
-
-        let message: Message
+        let message: AssistantDelta
     }
 
     let choices: [Choice]
+}
+
+enum CompletionDelta: Equatable, Sendable {
+    case content(String)
+    case reasoning(String)
+}
+
+struct AssistantDelta: Decodable {
+    let content: String?
+    let reasoning: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case content, reasoning
+        case reasoningContent = "reasoning_content"
+        case reasoningDetails = "reasoning_details"
+    }
+    private struct ReasoningDetail: Decodable {
+        let type: String?
+        let text: String?
+        let summary: String?
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        content = try? values.decodeIfPresent(String.self, forKey: .content)
+        let direct = (try? values.decodeIfPresent(String.self, forKey: .reasoningContent))
+            ?? (try? values.decodeIfPresent(String.self, forKey: .reasoning))
+        let details = (try? values.decodeIfPresent([ReasoningDetail].self, forKey: .reasoningDetails)) ?? []
+        let text = details.compactMap { detail -> String? in
+            switch detail.type {
+            case "reasoning.text": detail.text
+            case "reasoning.summary": detail.summary
+            default: nil // Encrypted/redacted blocks are not displayable thinking.
+            }
+        }.joined()
+        reasoning = direct?.isEmpty == false ? direct : (text.isEmpty ? nil : text)
+    }
 }
 
 struct APIErrorResponse: Decodable {

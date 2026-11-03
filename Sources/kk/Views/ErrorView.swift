@@ -25,6 +25,7 @@ struct ErrorView: View {
             }
         }
         .font(.system(size: 12))
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color(nsColor: .underPageBackgroundColor), in: RoundedRectangle(cornerRadius: 8))

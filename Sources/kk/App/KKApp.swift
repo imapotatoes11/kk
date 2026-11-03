@@ -26,16 +26,19 @@ final class AppState: ObservableObject {
     let apiClient: OpenAICompatibleClient
     let chat: ChatController
     let panelController: PanelController
+    let copyFeedback: CopyFeedbackController
 
     private var shortcutTask: Task<Void, Never>?
+    private var settingsController: SettingsWindowController?
     private(set) var settingsWindow: NSWindow?
 
-    init() {
-        preferences = Preferences()
-        keychain = KeychainStore()
+    init(preferences: Preferences = Preferences(), keychain: APIKeyStoring = KeychainStore(), clipboard: ClipboardWriting = SystemClipboardWriter(), apiClient: OpenAICompatibleClient = OpenAICompatibleClient()) {
+        self.preferences = preferences
+        self.keychain = keychain
         captureService = ScreenCaptureService()
-        apiClient = OpenAICompatibleClient()
-        panelController = PanelController()
+        self.apiClient = apiClient
+        panelController = PanelController(preferences: preferences)
+        copyFeedback = CopyFeedbackController(clipboard: clipboard)
         chat = ChatController(
             preferences: preferences,
             keychain: keychain,
@@ -47,8 +50,7 @@ final class AppState: ObservableObject {
         }
 
         shortcutTask = Task { [weak self] in
-            let shortcut = KeyboardShortcuts.Shortcut(.k, modifiers: [.command, .option])
-            for await event in KeyboardShortcuts.events(for: shortcut) where event == .keyUp {
+            for await event in KeyboardShortcuts.events(for: .askKK) where event == .keyUp {
                 self?.togglePanel()
             }
         }
@@ -80,18 +82,27 @@ final class AppState: ObservableObject {
         if let existing = settingsWindow {
             window = existing
         } else {
-            let settings = SettingsView(preferences: preferences).environmentObject(self)
-            let created = NSWindow(contentViewController: NSHostingController(rootView: settings))
-            created.title = "kk Settings"
-            created.styleMask = [.titled, .closable, .miniaturizable]
-            created.isReleasedWhenClosed = false
-            created.setContentSize(NSSize(width: 500, height: 400))
-            created.center()
+            let controller = SettingsWindowController(appState: self)
+            settingsController = controller
+            let created = controller.window!
             settingsWindow = created
             window = created
         }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    func copyAnswer(_ text: String) {
+        copyFeedback.copy(text, near: panelController.panel?.frame)
+    }
+
+    @discardableResult
+    func handleCopyShortcut() -> Bool {
+        guard preferences.copyShortcutAction != .disabled else { return false }
+        let answer = chat.messages.last(where: { $0.role == .assistant })?.content ?? ""
+        let succeeded = copyFeedback.copy(answer, near: panelController.panel?.frame)
+        if succeeded && preferences.copyShortcutAction == .copyAndClose { dismissPanel() }
+        return true
     }
 
     private func openPanel() {
@@ -104,10 +115,12 @@ final class AppState: ObservableObject {
             preferences: preferences,
             panelController: panelController,
             onOpenSettings: openSettings,
-            onDismiss: dismissPanel
+            onDismiss: dismissPanel,
+            onCopyAnswer: copyAnswer
         )
 
         panelController.show(rootView: AnyView(rootView), on: screen)
+        panelController.panel?.onCopyShortcut = { [weak self] in self?.handleCopyShortcut() ?? false }
         chat.beginCapture(for: screen)
     }
 }

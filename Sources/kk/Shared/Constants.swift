@@ -2,6 +2,7 @@ import Foundation
 
 enum UIConstants {
     static let panelWidth: CGFloat = 680
+    static let compactPanelWidth: CGFloat = 480
     static let panelMaxHeight: CGFloat = 620
     static let panelTopMargin: CGFloat = 88
     static let cornerRadius: CGFloat = 12

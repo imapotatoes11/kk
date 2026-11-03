@@ -31,7 +31,7 @@ final class OpenAICompatibleClientTests: XCTestCase {
         let request = ChatCompletionRequest(model: "test", messages: [], stream: true)
         var answer = ""
         for try await delta in client.streamCompletion(request: request, configuration: config) {
-            answer += delta
+            if case .content(let text) = delta { answer += text }
         }
         return answer
     }
