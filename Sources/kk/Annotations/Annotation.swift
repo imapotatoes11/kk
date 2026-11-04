@@ -2,11 +2,13 @@ import AppKit
 import SwiftUI
 
 enum AnnotationTool: String, CaseIterable, Identifiable, Sendable {
-    case freehand, ellipse, rectangle, arrow
+    case pointer, freehand, ellipse, rectangle, arrow
+    static var drawingTools: [Self] { allCases.filter { $0 != .pointer } }
     var id: Self { self }
-    var key: String { switch self { case .freehand: "f"; case .ellipse: "e"; case .rectangle: "r"; case .arrow: "a" } }
+    var key: String { switch self { case .pointer: "v"; case .freehand: "f"; case .ellipse: "e"; case .rectangle: "r"; case .arrow: "a" } }
     var title: String {
         switch self {
+        case .pointer: "Pointer"
         case .freehand: "Freehand"
         case .ellipse: "Ellipse"
         case .rectangle: "Rectangle"
@@ -15,6 +17,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Sendable {
     }
     var symbol: String {
         switch self {
+        case .pointer: "cursorarrow"
         case .freehand: "pencil.tip"
         case .ellipse: "circle"
         case .rectangle: "rectangle"
@@ -55,6 +58,7 @@ struct ScreenAnnotation: Equatable, Sendable {
     var points: [CGPoint]
 
     var isVisible: Bool {
+        guard tool != .pointer else { return false }
         guard let start = points.first, let end = points.last else { return false }
         return tool == .freehand || hypot(end.x - start.x, end.y - start.y) >= 3
     }
@@ -64,6 +68,7 @@ struct ScreenAnnotation: Equatable, Sendable {
         guard let start = points.first, let end = points.last else { return path }
         let rect = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: abs(end.x - start.x), height: abs(end.y - start.y))
         switch tool {
+        case .pointer: break
         case .freehand:
             path.move(to: start)
             if points.count == 1 {
@@ -147,7 +152,7 @@ final class AnnotationDocument: ObservableObject {
     func setSmoothing(_ enabled: Bool) { current?.smoothed = enabled }
     var visibleAnnotations: [ScreenAnnotation] { annotations + (current.map { [$0] } ?? []) }
     func begin(at point: CGPoint, tool: AnnotationTool, color: AnnotationColor, lineWidth: CGFloat) {
-        guard isDrawing, !isPreparing else { return }
+        guard isDrawing, !isPreparing, tool != .pointer else { return }
         current = ScreenAnnotation(tool: tool, color: color, lineWidth: lineWidth, points: [point])
     }
     func move(to point: CGPoint) {

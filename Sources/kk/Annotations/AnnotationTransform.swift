@@ -7,7 +7,7 @@ struct AnnotationHit: Equatable {
 
 enum AnnotationTransform {
     static func corners(of mark: ScreenAnnotation) -> [CGPoint] {
-        guard mark.tool != .freehand, let first = mark.points.first, let last = mark.points.last else { return [] }
+        guard mark.tool != .freehand, mark.tool != .pointer, let first = mark.points.first, let last = mark.points.last else { return [] }
         if mark.tool == .arrow { return [first, last] }
         let rect = CGRect(x: min(first.x, last.x), y: min(first.y, last.y), width: max(1, abs(last.x - first.x)), height: max(1, abs(last.y - first.y)))
         return [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)]

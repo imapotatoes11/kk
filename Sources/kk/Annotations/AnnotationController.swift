@@ -38,6 +38,7 @@ final class AnnotationController {
         guard preferences.annotationsEnabled else { return }
         self.screen = screen
         freeze = preferences.freezeScreen
+        document.isDrawing = preferences.annotationTool != .pointer
         isActive = true
         onActiveChange?(true)
         screenObserver = NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
@@ -51,6 +52,7 @@ final class AnnotationController {
         guard isActive, let screen else { return }
         // Keep the very first successful capture as the frozen backdrop.
         guard canvasPanel == nil else { return }
+        document.isDrawing = preferences.annotationTool != .pointer
         if freeze { frozenImage = snapshot.image }
         document.isFrozen = freeze
         let canvas = AnnotationCanvasView(document: document, preferences: preferences)
@@ -98,6 +100,7 @@ final class AnnotationController {
         overlay.contentView = canvas
         self.canvas = canvas
         canvasPanel = overlay
+        overlay.ignoresMouseEvents = !document.isDrawing
 
         let toolbar = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         toolbar.backgroundColor = .clear
@@ -125,6 +128,12 @@ final class AnnotationController {
         preferences.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             self?.toolbarPanel?.appearance = self?.preferences.appearance.nsAppearance
             self?.updatePalettePosition()
+        }.store(in: &subscriptions)
+        preferences.$annotationTool.dropFirst().receive(on: RunLoop.main).sink { [weak self] tool in
+            guard let self else { return }
+            self.document.finish()
+            self.document.isDrawing = tool != .pointer
+            self.canvasPanel?.ignoresMouseEvents = !self.document.isDrawing || self.document.isPreparing
         }.store(in: &subscriptions)
         for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
             NotificationCenter.default.publisher(for: name).sink { [weak self] event in
@@ -154,7 +163,7 @@ final class AnnotationController {
         guard isActive, !suspended, !document.isPreparing,
               window === canvasPanel || window === toolbarPanel else { return false }
         if preferences.annotationBindings["pointer"]?.matches(event) == true { selectPointer(); return true }
-        if let tool = AnnotationTool.allCases.first(where: { preferences.annotationBindings[$0.rawValue]?.matches(event) == true }) {
+        if let tool = AnnotationTool.drawingTools.first(where: { preferences.annotationBindings[$0.rawValue]?.matches(event) == true }) {
             document.finish(); preferences.annotationTool = tool; document.isDrawing = true
             return true
         }
@@ -170,6 +179,7 @@ final class AnnotationController {
 
     func focusDrawing() {
         guard isActive, !suspended, !document.isPreparing, let canvasPanel, let canvas else { return }
+        if preferences.annotationTool == .pointer { preferences.annotationTool = .freehand }
         document.isDrawing = true
         canvasPanel.ignoresMouseEvents = false
         canvasPanel.makeKey()
@@ -424,6 +434,7 @@ struct AnnotationToolbar: View {
         HStack(spacing: 0) {
             PaletteButton("Pointer mode", action: {
                 document.finish()
+                if !document.isDrawing, preferences.annotationTool == .pointer { preferences.annotationTool = .freehand }
                 document.isDrawing.toggle()
                 onFocus()
             }) {
@@ -437,7 +448,7 @@ struct AnnotationToolbar: View {
             }
             .help("Pointer mode: pass clicks through to the desktop")
             .accessibilityLabel("Pointer mode")
-            ForEach(AnnotationTool.allCases) { tool in
+            ForEach(AnnotationTool.drawingTools) { tool in
                 PaletteButton(tool.title, action: {
                     document.finish()
                     preferences.annotationTool = tool

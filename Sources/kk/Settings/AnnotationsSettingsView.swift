@@ -46,7 +46,7 @@ struct AnnotationsSettingsView: View {
             }
             .disabled(!preferences.annotationsEnabled)
             Section {
-                ForEach(AnnotationTool.allCases) { tool in
+                ForEach(AnnotationTool.drawingTools) { tool in
                     LabeledContent(tool.title) { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: tool.rawValue).frame(width: 140, height: 26) }
                 }
                 LabeledContent("Pointer") { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: "pointer").frame(width: 140, height: 26) }
