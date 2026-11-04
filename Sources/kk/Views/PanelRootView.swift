@@ -224,12 +224,13 @@ struct PanelRootView: View {
 struct UserMessageBubble: View {
     @Environment(\.colorScheme) private var colorScheme
     let text: String
+    var textSize: CGFloat = 14
     @State private var availableWidth: CGFloat = 480
     var body: some View {
         HStack {
             Spacer(minLength: 40)
-            ResponseView(markdown: text, isStreaming: false)
-                .frame(width: max(4, ConversationLayout.bubbleWidth(text: text, available: availableWidth) - 28))
+            ResponseView(markdown: text, isStreaming: false, textSize: textSize)
+                .frame(width: max(4, ConversationLayout.bubbleWidth(text: text, available: availableWidth, fontSize: textSize) - 28))
                 .accessibilityLabel("Your question")
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
@@ -256,7 +257,7 @@ private struct ConversationView: View {
                     ForEach(chat.messages) { message in
                         VStack(alignment: .leading, spacing: 10) {
                             if message.role == .user {
-                                UserMessageBubble(text: message.content)
+                                UserMessageBubble(text: message.content, textSize: preferences.answerTextSize.points)
                             } else {
                                 AssistantMessageView(message: message, isStreaming: chat.isStreaming && message.id == chat.messages.last?.id, preferences: preferences, onCopy: { onCopyAnswer(message.content) })
                                 if message.id != chat.messages.last?.id { Divider() }

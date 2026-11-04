@@ -1,0 +1,72 @@
+# Using kk
+
+[Back to README](../README.md)
+
+## Screen context
+
+In **Settings → General → Attach screen**, choose the display under the cursor (default), the active window's display, or all displays. All-displays mode attaches a separate image for each visible desktop; it does not capture hidden macOS Spaces. Drawing and freezing apply to the display where kk opens.
+
+Use the screen icon beside the question field to preview attached images. Right-click it to remove the screen for that turn. Hiding the preview control in Settings does not remove the attachment.
+
+With **Settings → Annotations → Freeze screen** enabled, kk holds a snapshot behind your marks. Pointer mode temporarily reveals the live desktop and lets clicks pass through. Selecting a drawing tool returns to the frozen snapshot. With freezing off, kk refreshes the selected screens when you send.
+
+Each completed answer starts a new annotation session for the next question. Follow-ups can refer to a different screen; previous turns retain their original attachments. Retry reuses the failed question's images. A capture failure preserves your draft and marks rather than sending a partial set of displays.
+
+## Annotations
+
+Choose a tool from the palette or use its shortcut while the canvas has focus:
+
+| Key | Tool / action |
+| --- | --- |
+| V | Pointer: interact with the desktop |
+| F | Freehand |
+| E | Ellipse / circle |
+| R | Rectangle |
+| A | Arrow |
+| X | Eraser: click to remove a whole stroke |
+| Space | Focus the question field |
+| Delete | Remove the hovered annotation |
+
+Drag near a mark's stroke to move it. Hover rectangles and ellipses to reveal corner resize handles; arrows have endpoint handles. Undo restores moves, resizes, and deletions. Handles are excluded from submitted screenshots.
+
+Double-tap Shift in the question field to return to drawing, or click the pencil button in a conversation. Change or disable this gesture in **Settings → Annotations**. That section also controls activation, default tool and color, line weight, smoothing, tool shortcuts, palette position, hover deletion, and discard confirmation. Double Shift may overlap with macOS Sticky Keys.
+
+## Conversations and copying
+
+**Return** sends; **Shift+Return** adds a line. While an answer streams, you can edit the next draft or click **Stop**. Scrolling up pauses automatic following; return to the bottom to resume it. Pressing the global shortcut during an existing chat focuses the follow-up field.
+
+Each answer has a **Copy** action. In **Settings → Shortcuts**, optionally make **⌘C** copy the latest answer or copy and close. Selected text keeps normal copy behavior.
+
+**Settings → General** offers confirmation before dismissing a multi-turn chat and copying the chat as Markdown on dismissal. Both default to off and apply after at least two user questions. Transcripts include questions and answers, without screenshots or model thinking. Conversations are not saved automatically.
+
+## Appearance and placement
+
+Drag the header to move kk, and resize from an edge or corner. **Settings → General** controls compact/full opening size, width, placement at the default position or cursor, snapping, always-on-top behavior, material, appearance, accent, and answer text size. Liquid Glass requires macOS 26; earlier systems use translucency.
+
+Optional **Show model thinking** displays reasoning or summaries supplied by your endpoint. Availability depends on the provider and model. Thinking stays separate from answer copies and follow-up requests.
+
+**Settings → About** contains launch at login and **Show onboarding again**. Restoring appearance defaults preserves your connection and global shortcut.
+
+## Troubleshooting
+
+### kk opened, but no main window appeared
+
+kk is a menu-bar app. Use its menu-bar icon or **⌘⌥K** to open the popup. When Settings is open, kk also shows a Dock icon.
+
+### The screen is not attached
+
+Click **Grant access**, then enable kk in **System Settings → Privacy & Security → Screen & System Audio Recording** (the label varies by macOS version). The helper can supply the running app's icon for dragging into the list. If macOS offers **Quit & Reopen**, use it. Otherwise quit and reopen kk if access is still unavailable. Text-only questions remain available.
+
+### The API rejects a request
+
+Check the base URL, model ID, and saved key in **Settings → Connection**. kk appends `/chat/completions` unless the URL already ends with it. The endpoint must support streaming Chat Completions and image input for screen questions. An OpenAI-compatible label alone does not guarantee that every provider supports the same features.
+
+### Remove a saved API key
+
+Use **Settings → Connection → Clear**. This leaves other preferences intact. You can also remove just kk's Keychain entry:
+
+```sh
+security delete-generic-password -s dev.kw2.kk -a openai-compatible-api-key
+```
+
+For other problems, [open an issue](https://github.com/imapotatoes11/kk/issues) with your macOS version, kk version, and reproduction steps. Remove keys and private screen content from any attachments.

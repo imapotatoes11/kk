@@ -54,10 +54,24 @@ struct CustomizationView: View {
                         }
                     }
                 }
-                Picker("Answer text", selection: $preferences.answerTextSize) {
-                    ForEach(AnswerTextSize.allCases) { Text($0.title).tag($0) }
+                LabeledContent("Chat text size") {
+                    HStack(spacing: 8) {
+                        Text("\(Int(preferences.answerTextSize.points)) pt")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 38)
+                        Slider(value: Binding(
+                            get: { Double(preferences.answerTextSize.points) },
+                            set: { preferences.answerTextSize = AnswerTextSize(points: CGFloat($0)) }
+                        ), in: AnswerTextSize.range, step: 1)
+                            .frame(width: 140)
+                            .accessibilityLabel("Chat text size")
+                            .accessibilityValue("\(Int(preferences.answerTextSize.points)) points")
+                        Button("Reset") { preferences.answerTextSize = .standard }
+                            .buttonStyle(.borderless)
+                            .disabled(preferences.answerTextSize == .standard)
+                            .help("Reset chat text size to the default (14 pt)")
+                            .accessibilityLabel("Reset chat text size to default")
+                    }
                 }
-                .pickerStyle(.segmented)
                 Toggle("Show model thinking", isOn: $preferences.showThinking)
             } header: {
                 Text("Appearance")

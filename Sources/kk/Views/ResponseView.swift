@@ -35,6 +35,14 @@ struct ResponseView: View {
 
 private struct AnswerFonts: MarkdownFontGroup {
     let size: CGFloat
+    var h1: any CustomCTFontConvertible { heading(.largeTitle) }
+    var h2: any CustomCTFontConvertible { heading(.title1) }
+    var h3: any CustomCTFontConvertible { heading(.title2) }
+    var h4: any CustomCTFontConvertible { heading(.title3) }
+    var h5: any CustomCTFontConvertible { heading(.headline) }
+    var h6: any CustomCTFontConvertible {
+        NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize * size / 14)
+    }
     var body: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
     var blockQuote: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
     var tableBody: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
@@ -42,6 +50,11 @@ private struct AnswerFonts: MarkdownFontGroup {
     var codeBlock: any CustomCTFontConvertible { NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) }
     var inlineMath: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size) }
     var displayMath: any CustomCTFontConvertible { NSFont.systemFont(ofSize: size + 2) }
+
+    private func heading(_ style: NSFont.TextStyle) -> NSFont {
+        let font = NSFont.preferredFont(forTextStyle: style)
+        return NSFont(descriptor: font.fontDescriptor, size: font.pointSize * size / 14) ?? font
+    }
 }
 
 private struct StreamingResponse: View {

@@ -57,15 +57,29 @@ enum AppAccent: String, CaseIterable, Identifiable {
     var color: Color? { nsColor.map { Color(nsColor: $0) } }
 }
 
-enum AnswerTextSize: String, CaseIterable, Identifiable {
-    case small, standard, large
-    var id: Self { self }
-    var title: String { rawValue.capitalized }
-    var points: CGFloat {
-        switch self {
-        case .small: 13
-        case .standard: 14
-        case .large: 16
+struct AnswerTextSize: Equatable, Sendable {
+    static let range: ClosedRange<Double> = 12...24
+    static let small = Self(points: 13)
+    static let standard = Self(points: 14)
+    static let large = Self(points: 16)
+
+    let points: CGFloat
+    var rawValue: String { String(Int(points)) }
+
+    init(points: CGFloat) {
+        let value = points.isFinite ? points.rounded() : 14
+        self.points = min(CGFloat(Self.range.upperBound), max(CGFloat(Self.range.lowerBound), value))
+    }
+
+    init?(rawValue: String) {
+        // Preserve selections saved by the former Small / Standard / Large picker.
+        switch rawValue {
+        case "small": self = .small
+        case "standard": self = .standard
+        case "large": self = .large
+        default:
+            guard let value = Double(rawValue) else { return nil }
+            self.init(points: CGFloat(value))
         }
     }
 }

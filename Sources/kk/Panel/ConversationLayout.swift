@@ -14,9 +14,9 @@ enum ConversationLayout {
         return min(maximum, max(minimum, ceil(natural / 40) * 40))
     }
 
-    static func bubbleWidth(text: String, available: CGFloat) -> CGFloat {
+    static func bubbleWidth(text: String, available: CGFloat, fontSize: CGFloat = 14) -> CGFloat {
         // Headings need slightly more room than body text. The renderer still owns wrapping.
-        let size: CGFloat = text.contains("# ") ? 24 : 14
+        let size: CGFloat = text.contains("# ") ? fontSize * (24.0 / 14.0) : fontSize
         return max(32, min(max(32, available - 40), ceil(textWidth(text, fontSize: size)) + 28))
     }
 

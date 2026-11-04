@@ -70,7 +70,8 @@ final class DarkAppearanceTests: XCTestCase {
     @MainActor
     private func editor(scheme: ColorScheme) -> some View {
         PromptEditor(text: .constant("Readable at night"), isDisabled: false, onSubmit: {})
-            .frame(width: 340, height: 40).padding(12).background(Color.black)
+            .frame(width: 340, height: 40).padding(12)
+            .background(scheme == .dark ? Color.black : Color.white)
             .environment(\.colorScheme, scheme)
     }
 
