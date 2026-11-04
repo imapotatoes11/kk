@@ -15,6 +15,7 @@ struct AnnotationShortcut: Codable, Equatable {
         "rectangle": .init(keyCode: 15, modifiers: 0, label: "R"),
         "ellipse": .init(keyCode: 14, modifiers: 0, label: "E"),
         "arrow": .init(keyCode: 0, modifiers: 0, label: "A"),
+        "eraser": .init(keyCode: 7, modifiers: 0, label: "X"),
         "annotate": .init(keyCode: 0, modifiers: NSEvent.ModifierFlags([.control, .shift]).rawValue, label: "⌃⇧A"),
         "focus": .init(keyCode: 49, modifiers: 0, label: "Space")
     ]

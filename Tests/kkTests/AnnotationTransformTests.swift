@@ -66,6 +66,93 @@ final class AnnotationTransformTests: XCTestCase {
 
 
 extension AnnotationTransformTests {
+    @MainActor
+    func testEraserDeletesTopmostStrokeWithUndoAndDoesNotDrawOrDismiss() throws {
+        _ = NSApplication.shared
+        let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        prefs.annotationTool = .eraser
+        let doc = AnnotationDocument()
+        for color in [AnnotationColor.red, .blue] {
+            doc.begin(at: CGPoint(x: 100, y: 100), tool: .rectangle, color: color, lineWidth: 3)
+            doc.move(to: CGPoint(x: 200, y: 200)); doc.finish()
+        }
+        let originals = doc.annotations
+        let canvas = AnnotationCanvasView(document: doc, preferences: prefs)
+        canvas.onEmptyClick = { XCTFail("Eraser clicks must not dismiss kk"); return true }
+        func click(_ point: CGPoint) {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                canvas.mouseEventForTesting(type, at: point, timestamp: 1)
+            }
+        }
+        click(CGPoint(x: 150, y: 150))
+        XCTAssertEqual(doc.annotations, originals, "Hollow interiors are not eraser targets")
+        click(CGPoint(x: 100, y: 150))
+        XCTAssertEqual(doc.annotations, [originals[0]])
+        XCTAssertNil(doc.current)
+        doc.undo()
+        XCTAssertEqual(doc.annotations, originals)
+        doc.clear()
+        click(.zero)
+        XCTAssertTrue(doc.annotations.isEmpty)
+        doc.begin(at: .zero, tool: .eraser, color: .red, lineWidth: 3)
+        XCTAssertNil(doc.current, "Eraser must never become a rendered mark")
+    }
+
+    @MainActor
+    func testHoverDeleteToggleUndoExitAndGestureGuards() throws {
+        _ = NSApplication.shared
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let prefs = Preferences(defaults: defaults)
+        XCTAssertTrue(prefs.deleteHoveredAnnotation)
+        let doc = AnnotationDocument()
+        doc.begin(at: CGPoint(x: 100, y: 100), tool: .freehand, color: .red, lineWidth: 3)
+        doc.move(to: CGPoint(x: 200, y: 100)); doc.finish()
+        let original = doc.annotations
+        let canvas = AnnotationCanvasView(document: doc, preferences: prefs)
+        let delete = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 1, windowNumber: 0, context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51))
+        canvas.mouseEventForTesting(.mouseMoved, at: CGPoint(x: 150, y: 100))
+        prefs.deleteHoveredAnnotation = false
+        XCTAssertFalse(Preferences(defaults: defaults).deleteHoveredAnnotation)
+        XCTAssertFalse(canvas.handleDeleteShortcut(delete))
+        XCTAssertEqual(doc.annotations, original)
+        prefs.deleteHoveredAnnotation = true
+        doc.isPreparing = true
+        XCTAssertFalse(canvas.handleDeleteShortcut(delete))
+        doc.isPreparing = false
+        canvas.mouseEventForTesting(.leftMouseDown, at: CGPoint(x: 150, y: 100))
+        XCTAssertFalse(canvas.handleDeleteShortcut(delete), "Cannot delete during a transform")
+        canvas.mouseEventForTesting(.leftMouseDragged, at: CGPoint(x: 150, y: 160))
+        canvas.mouseEventForTesting(.leftMouseUp, at: CGPoint(x: 150, y: 160))
+        let moved = doc.annotations
+        XCTAssertTrue(canvas.handleDeleteShortcut(delete))
+        XCTAssertTrue(doc.annotations.isEmpty)
+        doc.undo()
+        XCTAssertEqual(doc.annotations, moved, "Delete immediately after dragging must target the moved mark")
+        doc.undo()
+        XCTAssertEqual(doc.annotations, original)
+        canvas.mouseEventForTesting(.mouseExited, at: .zero)
+        XCTAssertFalse(canvas.handleDeleteShortcut(delete))
+        canvas.mouseEventForTesting(.mouseMoved, at: CGPoint(x: 150, y: 100))
+        doc.isDrawing = false
+        XCTAssertFalse(canvas.handleDeleteShortcut(delete))
+    }
+
+    @MainActor
+    func testEraserBindingMigrationPreservesConflictsAndClearedBindings() throws {
+        for conflict in [false, true] {
+            let defaults = UserDefaults(suiteName: UUID().uuidString)!
+            var bindings = AnnotationShortcut.defaults
+            bindings.removeValue(forKey: "eraser")
+            if conflict { bindings["freehand"] = AnnotationShortcut.defaults["eraser"] }
+            defaults.set(try JSONEncoder().encode(bindings), forKey: "annotationBindings")
+            let prefs = Preferences(defaults: defaults)
+            XCTAssertEqual(prefs.annotationBindings["eraser"]?.label, conflict ? nil : "X")
+            if conflict { XCTAssertEqual(prefs.annotationBindings["freehand"]?.label, "X") }
+            prefs.annotationBindings.removeValue(forKey: "eraser")
+            XCTAssertNil(Preferences(defaults: defaults).annotationBindings["eraser"])
+        }
+    }
+
     func testArrowsHaveExactlyTwoIndependentEndpointHandles() {
         for points in [[CGPoint(x: 10, y: 20), CGPoint(x: 90, y: 80)], [CGPoint(x: 90, y: 80), CGPoint(x: 10, y: 20)], [CGPoint(x: 10, y: 20), CGPoint(x: 90, y: 20)]] {
             let mark = ScreenAnnotation(tool: .arrow, color: .red, lineWidth: 3, points: points)
@@ -77,6 +164,21 @@ extension AnnotationTransformTests {
                 XCTAssertEqual(moved.points[1 - index], points[1 - index])
                 XCTAssertEqual(AnnotationTransform.hit(at: points[index], marks: [mark], hovered: 0), AnnotationHit(index: 0, corner: index))
             }
+        }
+    }
+}
+
+@MainActor
+private extension AnnotationCanvasView {
+    func mouseEventForTesting(_ type: NSEvent.EventType, at point: CGPoint, timestamp: TimeInterval = 1) {
+        let event = NSEvent.mouseEvent(with: type == .mouseExited ? .mouseMoved : type, location: point, modifierFlags: [], timestamp: timestamp, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        switch type {
+        case .mouseMoved: mouseMoved(with: event)
+        case .mouseExited: mouseExited(with: event)
+        case .leftMouseDown: mouseDown(with: event)
+        case .leftMouseDragged: mouseDragged(with: event)
+        case .leftMouseUp: mouseUp(with: event)
+        default: break
         }
     }
 }

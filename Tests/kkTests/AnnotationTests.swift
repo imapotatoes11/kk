@@ -66,7 +66,7 @@ final class AnnotationTests: XCTestCase {
     func testEveryToolRendersAndCompositeScalesWithoutMovingBasePixels() throws {
         let image = try Self.image(width: 200, height: 100)
         let base = NSBitmapImageRep(cgImage: image)
-        for tool in AnnotationTool.allCases {
+        for tool in AnnotationTool.drawingTools {
             let mark = ScreenAnnotation(tool: tool, color: .red, lineWidth: 3,
                                         points: [CGPoint(x: 10, y: 10), CGPoint(x: 75, y: 40)])
             let result = try AnnotationRenderer.composite([mark], onto: image, canvasSize: CGSize(width: 100, height: 50))

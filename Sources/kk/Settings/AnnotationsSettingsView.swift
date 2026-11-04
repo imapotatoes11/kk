@@ -20,6 +20,7 @@ struct AnnotationsSettingsView: View {
                     AnnotationColorPicker(selection: $preferences.annotationColor)
                 }
                 Toggle("Smooth freehand strokes", isOn: $preferences.smoothStrokes)
+                Toggle("Delete hovered annotation with Delete key", isOn: $preferences.deleteHoveredAnnotation)
                 Toggle("Confirm before discarding marks", isOn: $preferences.confirmDiscard)
                 if preferences.confirmDiscard {
                     LabeledContent("Discard threshold") {
@@ -42,11 +43,11 @@ struct AnnotationsSettingsView: View {
                 }
                 .pickerStyle(.segmented)
             } header: { Text("Drawing") } footer: {
-                Text("Use the floating toolbar to switch tools, undo, or clear marks. Pointer mode reveals the live desktop and lets clicks pass through. Customize tool and question-focus keys below. Escape closes kk. Drag the header or kk logo to move it.")
+                Text("Click a stroke with Eraser to delete the whole mark. Hover a mark and press Delete while the canvas has focus to delete it with any tool. Undo restores deleted marks. Pointer mode lets clicks pass through. Escape closes kk.")
             }
             .disabled(!preferences.annotationsEnabled)
             Section {
-                ForEach(AnnotationTool.drawingTools) { tool in
+                ForEach(AnnotationTool.canvasTools) { tool in
                     LabeledContent(tool.title) { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: tool.rawValue).frame(width: 140, height: 26) }
                 }
                 LabeledContent("Pointer") { AnnotationShortcutRecorder(bindings: $preferences.annotationBindings, action: "pointer").frame(width: 140, height: 26) }

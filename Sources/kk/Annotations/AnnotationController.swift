@@ -86,6 +86,7 @@ final class AnnotationController {
                 return event
             }
             if event.keyCode == 53 { self.onDismiss?(); return nil }
+            if self.canvas?.handleDeleteShortcut(event) == true { return nil }
             if self.preferences.annotationBindings["focus"]?.matches(event) == true { self.onFocusPopup?(); return nil }
             if self.handleToolShortcut(event) { return nil }
             return event
@@ -163,7 +164,7 @@ final class AnnotationController {
         guard isActive, !suspended, !document.isPreparing,
               window === canvasPanel || window === toolbarPanel else { return false }
         if preferences.annotationBindings["pointer"]?.matches(event) == true { selectPointer(); return true }
-        if let tool = AnnotationTool.drawingTools.first(where: { preferences.annotationBindings[$0.rawValue]?.matches(event) == true }) {
+        if let tool = AnnotationTool.canvasTools.first(where: { preferences.annotationBindings[$0.rawValue]?.matches(event) == true }) {
             document.finish(); preferences.annotationTool = tool; document.isDrawing = true
             return true
         }
@@ -292,6 +293,8 @@ final class AnnotationCanvasView: NSView {
     var onEmptyClick: (() -> Bool)?
     private var tracking: NSTrackingArea?
     private var hovered: Int?
+    private var hoverLocation: CGPoint?
+    private var erasingGesture = false
     private var transformHit: AnnotationHit?
     private var originalMark: ScreenAnnotation?
     private var dragStart: CGPoint = .zero
@@ -304,7 +307,7 @@ final class AnnotationCanvasView: NSView {
         self.preferences = preferences
         super.init(frame: .zero)
         setAccessibilityLabel("Screen annotation canvas")
-        setAccessibilityHelp("Drag to draw. Use the floating toolbar for tools and undo. The kk popup remains movable.")
+        setAccessibilityHelp("Drag to draw. Click a stroke with Eraser to delete it. Hover a mark and press Delete when enabled. Use the floating toolbar to undo.")
     }
     required init?(coder: NSCoder) { nil }
     override var acceptsFirstResponder: Bool { true }
@@ -321,9 +324,16 @@ final class AnnotationCanvasView: NSView {
     }
     override func mouseMoved(with event: NSEvent) {
         guard document.isDrawing, !document.isPreparing else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        let hit = AnnotationTransform.hit(at: point, marks: document.annotations, hovered: hovered)
+        hoverLocation = convert(event.locationInWindow, from: nil)
+        refreshHover()
+        needsDisplay = true
+    }
+    private func refreshHover() {
+        guard document.isDrawing, !document.isPreparing, let point = hoverLocation else { hovered = nil; return }
+        let eraser = preferences.annotationTool == .eraser
+        let hit = AnnotationTransform.hit(at: point, marks: document.annotations, hovered: eraser ? nil : hovered)
         if let hit { hovered = hit.index }
+        else if eraser { hovered = nil }
         else if let interior = document.annotations.indices.reversed().first(where: {
             [.ellipse, .rectangle].contains(document.annotations[$0].tool) && document.annotations[$0].path.contains(point)
         }) { hovered = interior }
@@ -331,14 +341,15 @@ final class AnnotationCanvasView: NSView {
             let handles = AnnotationTransform.corners(of: document.annotations[index])
             if handles.count != 4 || !CGRect(x: handles[0].x, y: handles[0].y, width: handles[2].x - handles[0].x, height: handles[2].y - handles[0].y).insetBy(dx: -12, dy: -12).contains(point) { hovered = nil }
         } else { hovered = nil }
-        if hit?.corner != nil { NSCursor.crosshair.set() }
+        if eraser { NSCursor.crosshair.set() }
+        else if hit?.corner != nil { NSCursor.crosshair.set() }
         else if hit != nil { NSCursor.openHand.set() }
         else { NSCursor.crosshair.set() }
-        needsDisplay = true
     }
     override func mouseExited(with event: NSEvent) {
         guard transformHit == nil else { return }
         hovered = nil
+        hoverLocation = nil
         needsDisplay = true
         NSCursor.arrow.set()
     }
@@ -347,9 +358,21 @@ final class AnnotationCanvasView: NSView {
         context.clear(dirtyRect)
         context.setFillColor(CGColor(gray: 0, alpha: 0.002)); context.fill(dirtyRect)
         if document.isDrawing, let frozenImage { context.draw(frozenImage, in: bounds) }
+        if transformHit == nil { refreshHover() }
+        if let hovered, document.annotations.indices.contains(hovered), document.isDrawing, !document.isPreparing {
+            let mark = document.annotations[hovered]
+            context.saveGState()
+            context.setStrokeColor(NSColor.controlAccentColor.withAlphaComponent(0.5).cgColor)
+            context.setLineWidth(mark.lineWidth + 6)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            context.addPath(mark.path)
+            context.strokePath()
+            context.restoreGState()
+        }
         AnnotationRenderer.draw(document.visibleAnnotations, in: context)
         // Editing chrome belongs only to the canvas, never the submitted image.
-        if document.isDrawing, let hovered, document.annotations.indices.contains(hovered) {
+        if document.isDrawing, !document.isPreparing, preferences.annotationTool != .eraser, let hovered, document.annotations.indices.contains(hovered) {
             let handles = AnnotationTransform.corners(of: document.annotations[hovered])
             context.setFillColor(CGColor(gray: 1, alpha: 1))
             context.setStrokeColor(document.annotations[hovered].color.cgColor)
@@ -362,11 +385,23 @@ final class AnnotationCanvasView: NSView {
         }
     }
     override func mouseDown(with event: NSEvent) {
+        guard document.isDrawing, !document.isPreparing else { return }
         onFocus?()
         gestureStarted = event.timestamp
         gestureDistance = 0
         lastPoint = convert(event.locationInWindow, from: nil)
         dragStart = lastPoint
+        hoverLocation = lastPoint
+        erasingGesture = preferences.annotationTool == .eraser
+        if erasingGesture {
+            // Eraser always hits strokes, never handles or hollow shape interiors.
+            if let hit = AnnotationTransform.hit(at: lastPoint, marks: document.annotations, hovered: nil) {
+                document.remove(at: hit.index)
+            }
+            hovered = nil
+            needsDisplay = true
+            return
+        }
         transformHit = AnnotationTransform.hit(at: lastPoint, marks: document.annotations, hovered: hovered)
         if let hit = transformHit, document.isDrawing, !document.isPreparing {
             originalMark = document.annotations[hit.index]
@@ -383,6 +418,8 @@ final class AnnotationCanvasView: NSView {
         needsDisplay = true
     }
     override func mouseDragged(with event: NSEvent) {
+        hoverLocation = convert(event.locationInWindow, from: nil)
+        guard !erasingGesture else { return }
         let point = convert(event.locationInWindow, from: nil)
         gestureDistance += hypot(point.x - lastPoint.x, point.y - lastPoint.y)
         lastPoint = point
@@ -391,6 +428,8 @@ final class AnnotationCanvasView: NSView {
         needsDisplay = true
     }
     override func mouseUp(with event: NSEvent) {
+        hoverLocation = convert(event.locationInWindow, from: nil)
+        if erasingGesture { erasingGesture = false; needsDisplay = true; return }
         let point = convert(event.locationInWindow, from: nil)
         gestureDistance += hypot(point.x - lastPoint.x, point.y - lastPoint.y)
         if transformHit != nil {
@@ -407,6 +446,20 @@ final class AnnotationCanvasView: NSView {
         document.move(to: convert(event.locationInWindow, from: nil))
         document.finish()
         needsDisplay = true
+    }
+    @discardableResult
+    func handleDeleteShortcut(_ event: NSEvent) -> Bool {
+        guard [51, 117].contains(event.keyCode), event.modifierFlags.intersection(AnnotationShortcut.modifierMask).isEmpty,
+              preferences.deleteHoveredAnnotation, document.isDrawing, !document.isPreparing,
+              document.current == nil, transformHit == nil, !erasingGesture else { return false }
+        refreshHover()
+        guard let hovered, document.annotations.indices.contains(hovered) else { return false }
+        // Holding Delete must not eat through overlapping marks.
+        if !event.isARepeat { document.remove(at: hovered); self.hovered = nil; needsDisplay = true }
+        return true
+    }
+    override func keyDown(with event: NSEvent) {
+        if !handleDeleteShortcut(event) { super.keyDown(with: event) }
     }
     private func updateTransform(to point: CGPoint) {
         guard let hit = transformHit, let originalMark else { return }
@@ -431,6 +484,19 @@ struct AnnotationToolbar: View {
     let onClear: () -> Void
     var colorPicker = AnnotationColorPanel()
     var body: some View {
+        GeometryReader { geometry in
+            // Keep all controls inside even the narrowest launcher palette.
+            let toolWidth = min(44, max(28, (geometry.size.width - 148) / 7))
+            controls(toolWidth: toolWidth)
+        }
+        .buttonStyle(.plain)
+        .disabled(document.isPreparing)
+        .frame(height: 48)
+        .padding(4)
+        .foregroundStyle(Color.primary)
+        .modifier(PopupSurface(material: preferences.popupMaterial))
+    }
+    private func controls(toolWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             PaletteButton("Pointer mode", action: {
                 document.finish()
@@ -442,24 +508,24 @@ struct AnnotationToolbar: View {
                     Image(systemName: "cursorarrow")
                     Text(preferences.annotationBindings["pointer"]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 }
-                .frame(width: 44, height: PopupGeometry.actionHeight)
+                .frame(width: toolWidth, height: PopupGeometry.actionHeight)
                 .background(!document.isDrawing ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius))
                 .contentShape(Rectangle())
             }
             .help("Pointer mode: pass clicks through to the desktop")
             .accessibilityLabel("Pointer mode")
-            ForEach(AnnotationTool.drawingTools) { tool in
+            ForEach(AnnotationTool.canvasTools) { tool in
                 PaletteButton(tool.title, action: {
                     document.finish()
                     preferences.annotationTool = tool
                     document.isDrawing = true
                     onFocus()
                 }) {
-                    VStack(spacing: 3) { Image(systemName: tool.symbol); Text(preferences.annotationBindings[tool.rawValue]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.frame(width: 44, height: PopupGeometry.actionHeight)
+                    VStack(spacing: 3) { Image(systemName: tool.symbol); Text(preferences.annotationBindings[tool.rawValue]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.frame(width: toolWidth, height: PopupGeometry.actionHeight)
                         .background(document.isDrawing && preferences.annotationTool == tool ? preferences.annotationColor.color.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius))
                         .contentShape(Rectangle())
                 }
-                .help(tool.title).accessibilityLabel(tool.title)
+                .help(tool == .eraser ? "Eraser: click a stroke to delete the whole mark" : tool.title).accessibilityLabel(tool.title)
             }
             Divider().frame(height: 22)
             PaletteButton("Drawing color", action: {}, anchorAction: { anchor in
@@ -467,7 +533,7 @@ struct AnnotationToolbar: View {
             }) {
                 Circle().fill(preferences.annotationColor.color).frame(width: 18, height: 18)
                     .overlay { Circle().strokeBorder(.gray.opacity(0.5), lineWidth: 0.5) }
-                    .frame(width: 44, height: 48).contentShape(Rectangle())
+                    .frame(width: toolWidth, height: 48).contentShape(Rectangle())
             }
             .help("Drawing color").accessibilityLabel("Drawing color")
             Spacer(minLength: 0)
@@ -477,12 +543,6 @@ struct AnnotationToolbar: View {
                 .disabled(document.annotations.isEmpty).help("Clear all annotations").accessibilityLabel("Clear all annotations")
             PaletteButton("Ask kk", action: onFocus) { VStack(spacing: 3) { Text("Ask kk"); Text(preferences.annotationBindings["focus"]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.padding(.horizontal, 8).frame(height: PopupGeometry.actionHeight).background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius)) }
         }
-        .buttonStyle(.plain)
-        .disabled(document.isPreparing)
-        .frame(height: 48)
-        .padding(4)
-        .foregroundStyle(Color.primary)
-        .modifier(PopupSurface(material: preferences.popupMaterial))
     }
 }
 

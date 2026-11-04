@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 
 enum AnnotationTool: String, CaseIterable, Identifiable, Sendable {
-    case pointer, freehand, ellipse, rectangle, arrow
-    static var drawingTools: [Self] { allCases.filter { $0 != .pointer } }
+    case pointer, freehand, ellipse, rectangle, arrow, eraser
+    static var drawingTools: [Self] { allCases.filter { $0 != .pointer && $0 != .eraser } }
+    static var canvasTools: [Self] { drawingTools + [.eraser] }
     var id: Self { self }
-    var key: String { switch self { case .pointer: "v"; case .freehand: "f"; case .ellipse: "e"; case .rectangle: "r"; case .arrow: "a" } }
+    var key: String { switch self { case .pointer: "v"; case .freehand: "f"; case .ellipse: "e"; case .rectangle: "r"; case .arrow: "a"; case .eraser: "x" } }
     var title: String {
         switch self {
         case .pointer: "Pointer"
@@ -13,6 +14,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Sendable {
         case .ellipse: "Ellipse"
         case .rectangle: "Rectangle"
         case .arrow: "Arrow"
+        case .eraser: "Eraser"
         }
     }
     var symbol: String {
@@ -22,6 +24,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Sendable {
         case .ellipse: "circle"
         case .rectangle: "rectangle"
         case .arrow: "arrow.up.right"
+        case .eraser: "eraser"
         }
     }
 }
@@ -58,7 +61,7 @@ struct ScreenAnnotation: Equatable, Sendable {
     var points: [CGPoint]
 
     var isVisible: Bool {
-        guard tool != .pointer else { return false }
+        guard tool != .pointer && tool != .eraser else { return false }
         guard let start = points.first, let end = points.last else { return false }
         return tool == .freehand || hypot(end.x - start.x, end.y - start.y) >= 3
     }
@@ -68,7 +71,7 @@ struct ScreenAnnotation: Equatable, Sendable {
         guard let start = points.first, let end = points.last else { return path }
         let rect = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: abs(end.x - start.x), height: abs(end.y - start.y))
         switch tool {
-        case .pointer: break
+        case .pointer, .eraser: break
         case .freehand:
             path.move(to: start)
             if points.count == 1 {
@@ -137,6 +140,11 @@ final class AnnotationDocument: ObservableObject {
         guard annotations.indices.contains(index) else { return }
         annotations[index] = mark
     }
+    func remove(at index: Int) {
+        guard isDrawing, !isPreparing, current == nil, annotations.indices.contains(index) else { return }
+        saveUndo()
+        annotations.remove(at: index)
+    }
     private func saveUndo() { undoHistory.append(annotations); if undoHistory.count > 100 { undoHistory.removeFirst() }; canUndo = true }
     @Published var isDrawing = true
     @Published var isPreparing = false
@@ -152,7 +160,7 @@ final class AnnotationDocument: ObservableObject {
     func setSmoothing(_ enabled: Bool) { current?.smoothed = enabled }
     var visibleAnnotations: [ScreenAnnotation] { annotations + (current.map { [$0] } ?? []) }
     func begin(at point: CGPoint, tool: AnnotationTool, color: AnnotationColor, lineWidth: CGFloat) {
-        guard isDrawing, !isPreparing, tool != .pointer else { return }
+        guard isDrawing, !isPreparing, AnnotationTool.drawingTools.contains(tool) else { return }
         current = ScreenAnnotation(tool: tool, color: color, lineWidth: lineWidth, points: [point])
     }
     func move(to point: CGPoint) {

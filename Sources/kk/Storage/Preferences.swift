@@ -60,6 +60,7 @@ final class Preferences: ObservableObject {
     }
 
     @Published var smoothStrokes: Bool { didSet { defaults.set(smoothStrokes, forKey: "smoothStrokes") } }
+    @Published var deleteHoveredAnnotation: Bool { didSet { defaults.set(deleteHoveredAnnotation, forKey: "deleteHoveredAnnotation") } }
     @Published var confirmDiscard: Bool { didSet { defaults.set(confirmDiscard, forKey: "confirmDiscard") } }
     var onboardingComplete: Bool {
         get { defaults.bool(forKey: "onboardingComplete") }
@@ -110,7 +111,14 @@ final class Preferences: ObservableObject {
             defaults.set(try? JSONEncoder().encode(bindings), forKey: "annotationBindings")
             defaults.set(true, forKey: "pointerShortcutMigrated")
         }
+        if !defaults.bool(forKey: "eraserShortcutMigrated") {
+            let eraser = AnnotationShortcut.defaults["eraser"]!
+            if bindings["eraser"] == nil && !bindings.values.contains(where: { $0.keyCode == eraser.keyCode && $0.modifiers == eraser.modifiers }) { bindings["eraser"] = eraser }
+            defaults.set(try? JSONEncoder().encode(bindings), forKey: "annotationBindings")
+            defaults.set(true, forKey: "eraserShortcutMigrated")
+        }
         annotationBindings = bindings
+        deleteHoveredAnnotation = defaults.object(forKey: "deleteHoveredAnnotation") as? Bool ?? true
         smoothStrokes = defaults.object(forKey: "smoothStrokes") as? Bool ?? true
         confirmDiscard = defaults.object(forKey: "confirmDiscard") as? Bool ?? true
         annotationsEnabled = defaults.object(forKey: "annotationsEnabled") as? Bool ?? true

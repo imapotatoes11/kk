@@ -196,7 +196,12 @@ final class AppState: ObservableObject {
             return
         }
         if panelController.isVisible {
-            dismissPanel()
+            if chat.hasSubmitted {
+                NSApp.activate(ignoringOtherApps: true)
+                panelController.panel?.focusPrompt()
+            } else {
+                dismissPanel()
+            }
         } else {
             openPanel()
         }

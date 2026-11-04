@@ -4,6 +4,41 @@ import XCTest
 @testable import kk
 
 final class FollowUpTests: XCTestCase {
+    @MainActor
+    func testShortcutFocusesFollowupDuringAndAfterGenerationWithoutLosingState() async throws {
+        _ = NSApplication.shared
+        let prefs = preferences()
+        prefs.annotationsEnabled = false
+        let session = fixtureSession()
+        defer { session.invalidateAndCancel() }
+        let app = AppState(preferences: prefs, keychain: TestKeychain(), apiClient: OpenAICompatibleClient(session: session), captureService: ScreenCaptureService(permissionCheck: { false }))
+        app.togglePanel()
+        defer { app.dismissPanel() }
+        let popup = try XCTUnwrap(app.panelController.panel)
+        app.togglePanel()
+        XCTAssertFalse(popup.isVisible, "The launcher still toggles before a question is sent")
+        app.togglePanel()
+        app.chat.removeScreen()
+        app.chat.prompt = "first"
+        app.chat.submit()
+        app.chat.prompt = "next draft"
+        app.togglePanel()
+        XCTAssertTrue(app.panelController.isVisible)
+        XCTAssertTrue(app.chat.hasSubmitted)
+        XCTAssertEqual(app.chat.prompt, "next draft")
+        try await waitUntil { !app.chat.isStreaming && popup.promptEditor != nil }
+        let editor = try XCTUnwrap(popup.promptEditor)
+        let messages = app.chat.messages
+        let frame = popup.frame
+        popup.makeFirstResponder(nil)
+        app.togglePanel()
+        XCTAssertTrue(popup.isKeyWindow)
+        XCTAssertTrue(popup.firstResponder === editor)
+        XCTAssertEqual(app.chat.messages, messages)
+        XCTAssertEqual(app.chat.prompt, "next draft")
+        XCTAssertEqual(popup.frame, frame)
+    }
+
     func testEveryTurnKeepsItsOwnImageAndUnrelatedScreenGuidance() throws {
         let first = Data([1, 2]), second = Data([3, 4]), third = Data([5, 6])
         let history = [ChatMessage(role: .user, content: "first", screenData: first), ChatMessage(role: .assistant, content: "one"),
