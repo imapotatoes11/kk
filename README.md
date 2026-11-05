@@ -4,7 +4,7 @@ kk is a native macOS menu-bar assistant. Press **⌘⌥K**, point out what matte
 
 [Download](https://github.com/imapotatoes11/kk/releases) · [Usage guide](docs/USAGE.md) · [Contributing](CONTRIBUTING.md) · [Report a bug](https://github.com/imapotatoes11/kk/issues)
 
-<img src="docs/screenshots/screen-context.png" alt="kk beside a Python editor, explaining a circled mutable default argument using attached screen context" width="1200">
+<img src="docs/screenshots/math-context.png" alt="kk beside a Python editor, explaining a circled mutable default argument using attached screen context" width="1200">
 
 ## Features
 
