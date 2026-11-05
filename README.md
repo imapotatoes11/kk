@@ -1,14 +1,10 @@
 # kk
 
-**Ask about your screen. Keep the conversation going.**
-
 kk is a native macOS menu-bar assistant. Press **⌘⌥K**, point out what matters, and ask a question without leaving the app you're using. Bring your own OpenAI-compatible API endpoint and model.
 
 [Download](https://github.com/imapotatoes11/kk/releases) · [Usage guide](docs/USAGE.md) · [Contributing](CONTRIBUTING.md) · [Report a bug](https://github.com/imapotatoes11/kk/issues)
 
 <img src="docs/screenshots/screen-context.png" alt="kk beside a Python editor, explaining a circled mutable default argument using attached screen context" width="1200">
-
-*Native kk UI with a staged desktop and sample responses. [How these previews are made](docs/previews/README.md).*
 
 ## Features
 
