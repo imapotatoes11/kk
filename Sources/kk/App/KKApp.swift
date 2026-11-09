@@ -53,7 +53,7 @@ final class AppState: ObservableObject {
         self.keychain = keychain
         self.captureService = captureService
         self.apiClient = apiClient
-        panelController = PanelController(preferences: preferences)
+        panelController = PanelController(preferences: preferences, placementCapture: { try await captureService.capturePlacementImage(displayID: $0) })
         copyFeedback = CopyFeedbackController(clipboard: clipboard, preferences: preferences)
         annotations = AnnotationController(preferences: preferences, captureService: captureService)
         chat = ChatController(
@@ -83,7 +83,10 @@ final class AppState: ObservableObject {
             self.annotations.end()
             return true
         }
-        chat.onSubmit = { [weak self] in self?.annotations.end() }
+        chat.onSubmit = { [weak self] in
+            self?.annotations.end()
+            self?.panelController.moveToBlankSpace()
+        }
         chat.onPrepareFollowUp = { [weak self] in self?.prepareFollowUp() }
         chat.onAnnotate = { [weak self] in
             guard let self else { return }

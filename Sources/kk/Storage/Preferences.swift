@@ -42,6 +42,9 @@ final class Preferences: ObservableObject {
     @Published var snapToDefaultPosition: Bool {
         didSet { defaults.set(snapToDefaultPosition, forKey: Keys.snapToDefaultPosition) }
     }
+    @Published var placeInBlankSpace: Bool {
+        didSet { defaults.set(placeInBlankSpace, forKey: "placeInBlankSpace") }
+    }
 
     @Published var annotationsEnabled: Bool {
         didSet { defaults.set(annotationsEnabled, forKey: "annotationsEnabled") }
@@ -139,6 +142,7 @@ final class Preferences: ObservableObject {
         showThinking = defaults.object(forKey: Keys.showThinking) as? Bool ?? false
         popupOpeningPosition = PopupOpeningPosition(rawValue: defaults.string(forKey: Keys.popupOpeningPosition) ?? "") ?? .defaultPosition
         snapToDefaultPosition = defaults.object(forKey: Keys.snapToDefaultPosition) as? Bool ?? true
+        placeInBlankSpace = defaults.bool(forKey: "placeInBlankSpace")
     }
 
     func resetCustomization() {
@@ -158,6 +162,7 @@ final class Preferences: ObservableObject {
         showThinking = false
         popupOpeningPosition = .defaultPosition
         snapToDefaultPosition = true
+        placeInBlankSpace = false
     }
 
     private enum Keys {

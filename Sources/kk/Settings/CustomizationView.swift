@@ -19,6 +19,9 @@ struct CustomizationView: View {
                     ForEach(PopupOpeningPosition.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .disabled(preferences.placeInBlankSpace)
+                Toggle("Move chat to largest blank space", isOn: $preferences.placeInBlankSpace)
+                    .help("Scan this display locally when chat opens and each message is sent. Requires Screen Recording access.")
                 Toggle("Snap to default position", isOn: $preferences.snapToDefaultPosition)
                 Picker("Popup material", selection: $preferences.popupMaterial) {
                     ForEach(PopupMaterial.allCases) { Text($0.title).tag($0) }
@@ -33,6 +36,9 @@ struct CustomizationView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Compact opens small and smoothly expands when you ask. Either layout can be resized.")
                     Text("At cursor opens below the pointer. Drag near the default position to snap either axis; guides appear while aligned.")
+                    if preferences.placeInBlankSpace {
+                        Text("Blank-space placement scans the chat’s display on open and send, and reduces width and height to fit. Scans stay local. Without Screen Recording access, the normal opening position is used.")
+                    }
                     if #unavailable(macOS 26) {
                         Text("Liquid Glass uses translucency on this version of macOS.")
                     }

@@ -43,6 +43,10 @@ Each answer has a **Copy** action. In **Settings → Shortcuts**, optionally mak
 
 Drag the header to move kk, and resize from an edge or corner. **Settings → General** controls compact/full opening size, width, placement at the default position or cursor, snapping, always-on-top behavior, material, appearance, accent, and answer text size. Liquid Glass requires macOS 26; earlier systems use translucency.
 
+Enable **Move chat to largest blank space** to scan the chat’s display when it opens and whenever you send a message. kk looks for the largest visually quiet square, including whitespace inside other apps, and ignores faint thin dividers. Width stays within your configured opening width; both width and height shrink as needed, with a readable minimum that can overlap nearby content when space is tight. Answers scroll within the fitted space. Dragging or resizing takes control until the next send. This is a visual heuristic, so review its placement on busy or changing screens.
+
+Placement scans require existing **Screen Recording** access, exclude kk’s own windows, stay in memory, and are never attached to a message or sent to your provider. If access or a useful blank area is unavailable, kk keeps its normal placement. The option is off by default and takes precedence over the normal opening-position choice.
+
 Optional **Show model thinking** displays reasoning or summaries supplied by your endpoint. Availability depends on the provider and model. Thinking stays separate from answer copies and follow-up requests.
 
 **Settings → About** contains launch at login and **Show onboarding again**. Restoring appearance defaults preserves your connection and global shortcut.

@@ -56,6 +56,20 @@ struct ScreenCaptureService: Sendable {
     }
 
     private func captureOnce(displayID: CGDirectDisplayID?) async throws -> ScreenSnapshot {
+        let image = try await captureImage(displayID: displayID)
+        let data = try await Task.detached(priority: .userInitiated) {
+            try ImageProcessor.jpegData(from: image)
+        }.value
+        return ScreenSnapshot(image: image, data: data)
+    }
+
+    /// Placement never requests permission, encodes an attachment, or sends pixels to a provider.
+    func capturePlacementImage(displayID: CGDirectDisplayID?) async throws -> CGImage {
+        guard hasPassiveAccess else { throw KKError.screenCapturePermission }
+        return try await captureImage(displayID: displayID, maximumDimension: 1440)
+    }
+
+    private func captureImage(displayID: CGDirectDisplayID?, maximumDimension: CGFloat? = nil) async throws -> CGImage {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let displayID, let display = content.displays.first(where: { $0.displayID == displayID }) else {
             throw KKError.screenCaptureFailed("The selected display is no longer available for capture.")
@@ -79,12 +93,12 @@ struct ScreenCaptureService: Sendable {
         // Preserve native pixels for a crisp frozen backdrop; only the submitted JPEG is resized.
         configuration.width = max(1, Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded()))
         configuration.height = max(1, Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded()))
-
-        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
-        let data = try await Task.detached(priority: .userInitiated) {
-            try ImageProcessor.jpegData(from: image)
-        }.value
-        return ScreenSnapshot(image: image, data: data)
+        if let maximumDimension {
+            let scale = min(1, maximumDimension / CGFloat(max(configuration.width, configuration.height)))
+            configuration.width = max(1, Int(CGFloat(configuration.width) * scale))
+            configuration.height = max(1, Int(CGFloat(configuration.height) * scale))
+        }
+        return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
     }
 
     func hasAccess() async -> Bool { hasPassiveAccess }

@@ -12,6 +12,7 @@ kk is a native macOS menu-bar assistant. Press **⌘⌥K**, point out what matte
 - **Draw attention to the details.** Freehand marks, arrows, rectangles, and ellipses, with move, resize, eraser, and undo. Freeze the screen or work over the live desktop.
 - **Follow-up conversations.** Ask another question with fresh screen context. Draft while an answer streams, stop generation, and copy answers or a Markdown transcript.
 - **Readable answers.** Markdown, code blocks, tables, and LaTeX math in a resizable popup.
+- **Find a quiet spot.** Optionally move chat to the largest blank area on open and send, with width and height adjusted to fit.
 - **Your setup.** OpenAI-compatible cloud or local endpoints, customizable shortcuts, light and dark appearance, and optional launch at login.
 
 <details>

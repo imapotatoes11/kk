@@ -22,6 +22,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     private(set) var isDragging = false
     private(set) var currentSnap: PanelSnapResult?
     private var dragScreen: NSScreen?
+    private var blankSpace: NSRect?
+    private var placementTask: Task<Void, Never>?
+    private var placementID = UUID()
+    private let placementCapture: @Sendable (CGDirectDisplayID?) async throws -> CGImage
     var onDismiss: (() -> Void)?
     var annotationLayerActive = false {
         didSet { applyWindowAppearance() }
@@ -33,8 +37,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     var alignmentGuidesVisible: Bool { alignmentGuides.panel?.isVisible == true }
     static let expansionDuration: TimeInterval = 0.28
 
-    init(preferences: Preferences = Preferences()) {
+    init(preferences: Preferences = Preferences(), placementCapture: @escaping @Sendable (CGDirectDisplayID?) async throws -> CGImage = { try await ScreenCaptureService().capturePlacementImage(displayID: $0) }) {
         self.preferences = preferences
+        self.placementCapture = placementCapture
         lastPopupSize = preferences.popupSize
         super.init()
         preferenceSubscription = preferences.objectWillChange
@@ -51,6 +56,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         responseContentHeight = nil
         responseWidth = nil
         responseStreaming = false
+        blankSpace = nil
         lastOpeningWidth = preferences.openingWidth
         minimumContentHeight = preferences.popupSize == .compact ? 56 : 121
         lastPopupSize = preferences.popupSize
@@ -72,12 +78,56 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.maxSize = NSSize(width: max(UIConstants.panelWidth, preferences.openingWidth), height: UIConstants.panelMaxHeight)
         panel.focusPrompt()
         NSApp.activate(ignoringOtherApps: true)
+        moveToBlankSpace()
     }
 
     func hide() {
+        cancelPlacement()
+        blankSpace = nil
         endDrag(restoreLayout: false)
         stopFrameAnimation()
         panel?.orderOut(nil)
+    }
+
+    /// Re-scan only on explicit open/send events, never on streaming tokens.
+    func moveToBlankSpace() {
+        cancelPlacement()
+        guard preferences.placeInBlankSpace, let panel, panel.isVisible,
+              let screen = panel.screen ?? screen else { return }
+        let displayID = DisplayResolver.displayID(for: screen)
+        let screenFrame = screen.frame, visibleFrame = screen.visibleFrame
+        let preferred = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        let id = placementID
+        placementTask = Task { @MainActor [weak self, placementCapture] in
+            do {
+                let image = try await placementCapture(displayID)
+                try Task.checkCancellation()
+                let space = await Task.detached(priority: .userInitiated) {
+                    BlankSpaceFinder.find(in: image, screenFrame: screenFrame, visibleFrame: visibleFrame, near: preferred)
+                }.value
+                try Task.checkCancellation()
+                guard let self, self.placementID == id, self.preferences.placeInBlankSpace,
+                      self.isVisible, !self.isDragging,
+                      let currentScreen = self.panel?.screen,
+                      DisplayResolver.displayID(for: currentScreen) == displayID,
+                      currentScreen.frame == screenFrame, currentScreen.visibleFrame == visibleFrame else { return }
+                self.placementTask = nil
+                self.stopFrameAnimation()
+                self.blankSpace = space
+                self.hasUserResized = false
+                self.applyLayout()
+            } catch {
+                // Placement is optional. Permission/capture failures must not interrupt chat.
+                guard let self, self.placementID == id else { return }
+                self.placementTask = nil
+            }
+        }
+    }
+
+    private func cancelPlacement() {
+        placementID = UUID()
+        placementTask?.cancel()
+        placementTask = nil
     }
 
     /// Measurements coalesce while streaming. An active transition always finishes before
@@ -103,11 +153,23 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard !isDragging, let panel, let screen = panel.screen ?? screen else { return }
         let openingWidth = min(preferences.openingWidth, screen.visibleFrame.width - 32)
         let minHeight = min(minimumContentHeight, UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
-        panel.minSize = NSSize(width: openingWidth, height: minHeight)
+        let adaptive = preferences.placeInBlankSpace ? blankSpace : nil
+        let minimumWidth = preferences.placeInBlankSpace ? min(320, openingWidth) : openingWidth
+        panel.minSize = NSSize(width: minimumWidth, height: minHeight)
         panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: min(UIConstants.panelMaxHeight, screen.visibleFrame.height - 32))
+        if let adaptive, !hasUserResized {
+            guard !isAnimatingLayout else { return }
+            let desired = NSSize(width: hasExpanded ? (responseWidth ?? panel.maxSize.width) : openingWidth,
+                height: hasExpanded ? (responseContentHeight ?? panel.maxSize.height) : minHeight)
+            let frame = BlankSpaceFinder.fittedFrame(in: adaptive,
+                desired: NSSize(width: min(openingWidth, desired.width), height: min(panel.maxSize.height, desired.height)),
+                minimum: panel.minSize, visible: screen.visibleFrame)
+            setFrame(frame, animated: panel.isVisible)
+            return
+        }
         if hasUserResized {
             var frame = panel.frame
-            frame.size.width = min(panel.maxSize.width, max(openingWidth, frame.width))
+            frame.size.width = min(panel.maxSize.width, max(minimumWidth, frame.width))
             frame.size.height = min(panel.maxSize.height, max(minHeight, frame.height))
             frame.origin.y = panel.frame.maxY - frame.height
             setFrame(PanelPositioning.clamped(frame, to: screen), animated: false)
@@ -139,16 +201,25 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func windowWillStartLiveResize(_ notification: Notification) {
+        cancelPlacement()
+        blankSpace = nil
         endDrag(restoreLayout: false)
         stopFrameAnimation()
         hasUserResized = true
     }
 
     func windowDidMove(_ notification: Notification) {
+        if let activeScreen = panel?.screen, activeScreen != screen {
+            cancelPlacement()
+            blankSpace = nil
+        }
         screen = panel?.screen ?? screen
     }
 
     func beginDrag() {
+        if blankSpace != nil { hasUserResized = true }
+        cancelPlacement()
+        blankSpace = nil
         stopFrameAnimation()
         isDragging = true
         currentSnap = nil
@@ -187,6 +258,10 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func applyPreferences() {
         applyWindowAppearance()
+        if !preferences.placeInBlankSpace {
+            cancelPlacement()
+            blankSpace = nil
+        }
         if !preferences.snapToDefaultPosition {
             currentSnap = nil
             alignmentGuides.hide()
