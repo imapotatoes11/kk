@@ -19,6 +19,16 @@ struct AdvancedSettingsView: View {
             }
 
             Section {
+                Toggle("Draw Mermaid diagrams", isOn: $preferences.renderDiagrams)
+                Toggle("Fix diagrams that don't render", isOn: $preferences.repairDiagrams)
+                    .disabled(!preferences.renderDiagrams)
+            } header: {
+                Text("Diagrams")
+            } footer: {
+                Text("Answers can include flowcharts, sequence diagrams, and other Mermaid diagrams, drawn on your Mac. If a diagram has a syntax error, kk asks your model once for a corrected version after the answer finishes; this sends the diagram and error to your endpoint. With drawing off, diagrams appear as code and the model isn't asked to make them.")
+            }
+
+            Section {
                 Toggle("Show attach button", isOn: $preferences.showAttachButton)
                 Toggle("Show image preview button", isOn: $preferences.showPreviewButton)
                 Toggle("Show submit button", isOn: $preferences.showSubmitButton)

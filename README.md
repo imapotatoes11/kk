@@ -12,7 +12,7 @@ kk is a native macOS menu-bar assistant. Press **⌘⌥K**, point out what matte
 - **Draw attention to the details.** Freehand marks, arrows, rectangles, and ellipses, with move, resize, eraser, and undo. Freeze the screen or work over the live desktop.
 - **Attach files.** Paste, drop, or pick images (including HEIC and WebP), PDFs, and text files. Scanned PDF pages are read with on-device OCR, and vision models also see page images.
 - **Follow-up conversations.** Ask another question with fresh screen context. Draft while an answer streams, stop generation, and copy answers or a Markdown transcript.
-- **Readable answers.** Markdown, code blocks, tables, and LaTeX math in a resizable popup.
+- **Readable answers.** Markdown, code blocks, tables, LaTeX math, and Mermaid diagrams in a resizable popup. Diagrams are drawn on your Mac in kk's style, and kk asks the model to fix any that don't render.
 - **Find a quiet spot.** Optionally move chat to the largest blank area on open and send, with width and height adjusted to fit.
 - **Your setup.** OpenAI-compatible cloud or local endpoints, customizable shortcuts, light and dark appearance, and optional launch at login.
 
@@ -109,7 +109,7 @@ Build and packaging details are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [Issues](https://github.com/imapotatoes11/kk/issues) and pull requests are welcome. Include reproduction steps for bugs and discuss larger changes before implementing them. Read the [contributing guide](CONTRIBUTING.md) for setup, validation, and screenshot guidance.
 
-Built with [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) and [MarkdownView](https://github.com/LiYanan2004/MarkdownView).
+Built with [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts), [MarkdownView](https://github.com/LiYanan2004/MarkdownView), and [Mermaid](https://github.com/mermaid-js/mermaid) (MIT, bundled in `Sources/kk/Resources/Mermaid`).
 
 ## License
 

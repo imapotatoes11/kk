@@ -455,6 +455,8 @@ final class AppState: ObservableObject {
 
         let frontmost = NSWorkspace.shared.frontmostApplication
         previousApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
+        // Blank-space placement keeps chat beside the window the user is working in.
+        panelController.avoidedWindowFrame = DisplayResolver.activeWindowFrame()
         settingsWasKeyWhenOpening = settingsWindow?.isKeyWindow == true
         (settingsWindow as? KKSettingsWindow)?.suppressAutomaticKey = false
         // Resolve the focused external window before kk becomes active.

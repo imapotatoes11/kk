@@ -22,7 +22,16 @@ final class PanelController: NSObject, NSWindowDelegate {
     private(set) var isDragging = false
     private(set) var currentSnap: PanelSnapResult?
     private var dragScreen: NSScreen?
-    private var blankSpace: NSRect?
+    /// The latest blank-space scan: quiet cells, where kk may go, and the chosen spot.
+    private struct BlankPlacement: Sendable {
+        let map: BlankMap
+        let region: CGRect
+        let base: CGRect
+    }
+    private var blankPlacement: BlankPlacement?
+    var hasBlankPlacement: Bool { blankPlacement != nil }
+    /// The window the user was working in when kk opened. Blank-space placement avoids it.
+    var avoidedWindowFrame: CGRect?
     private var placementTask: Task<Void, Never>?
     private var placementID = UUID()
     private let placementCapture: @Sendable (CGDirectDisplayID?) async throws -> CGImage
@@ -36,6 +45,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     var isAnimatingLayout: Bool { frameAnimation != nil }
     var alignmentGuidesVisible: Bool { alignmentGuides.panel?.isVisible == true }
     static let expansionDuration: TimeInterval = 0.28
+    /// The narrowest kk gets, by manual resizing or blank-space placement.
+    static let minimumWidth: CGFloat = 360
+    /// The shortest a chat with answers gets, so the answer and composer stay usable.
+    static let minimumChatHeight: CGFloat = 220
+    /// The smallest usable size for the current content. Kept here because the hosting view's
+    /// layout resets the window's own `minSize`.
+    private(set) var minimumSize = NSSize(width: minimumWidth, height: 56)
 
     init(preferences: Preferences = Preferences(), placementCapture: @escaping @Sendable (CGDirectDisplayID?) async throws -> CGImage = { try await ScreenCaptureService().capturePlacementImage(displayID: $0) }) {
         self.preferences = preferences
@@ -56,7 +72,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         responseContentHeight = nil
         responseWidth = nil
         responseStreaming = false
-        blankSpace = nil
+        blankPlacement = nil
         lastOpeningWidth = preferences.openingWidth
         minimumContentHeight = preferences.popupSize == .compact ? 56 : 121
         lastPopupSize = preferences.popupSize
@@ -75,6 +91,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             cursor: cursorLocation ?? NSEvent.mouseLocation
         ), display: false)
         panel.minSize.width = min(preferences.openingWidth, screen.visibleFrame.width - 32)
+        minimumSize = NSSize(width: panel.minSize.width, height: minimumContentHeight)
         panel.maxSize = NSSize(width: max(UIConstants.panelWidth, preferences.openingWidth), height: UIConstants.panelMaxHeight)
         panel.focusPrompt()
         NSApp.activate(ignoringOtherApps: true)
@@ -83,7 +100,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func hide() {
         cancelPlacement()
-        blankSpace = nil
+        blankPlacement = nil
         endDrag(restoreLayout: false)
         stopFrameAnimation()
         panel?.orderOut(nil)
@@ -97,13 +114,22 @@ final class PanelController: NSObject, NSWindowDelegate {
         let displayID = DisplayResolver.displayID(for: screen)
         let screenFrame = screen.frame, visibleFrame = screen.visibleFrame
         let preferred = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        let avoided = avoidedWindowFrame
+        let width = min(preferences.openingWidth, visibleFrame.width - 32)
+        let minimum = CGSize(width: min(Self.minimumWidth, width), height: Self.minimumChatHeight)
         let id = placementID
         placementTask = Task { @MainActor [weak self, placementCapture] in
             do {
                 let image = try await placementCapture(displayID)
                 try Task.checkCancellation()
-                let space = await Task.detached(priority: .userInitiated) {
-                    BlankSpaceFinder.find(in: image, screenFrame: screenFrame, visibleFrame: visibleFrame, near: preferred)
+                let placement = await Task.detached(priority: .userInitiated) { () -> BlankPlacement? in
+                    guard let map = BlankSpaceFinder.map(from: image, screenFrame: screenFrame, visibleFrame: visibleFrame) else { return nil }
+                    let region = BlankSpaceFinder.allowedRegion(in: map.bounds, avoiding: avoided,
+                        minimum: minimum)
+                    // Score a typical chat height, so the spot also has room to grow after sending.
+                    let probe = BlankSpaceFinder.placement(of: CGSize(width: width, height: min(region.height, 360)),
+                        in: map, region: region, avoiding: avoided, near: preferred)
+                    return BlankPlacement(map: map, region: region, base: probe)
                 }.value
                 try Task.checkCancellation()
                 guard let self, self.placementID == id, self.preferences.placeInBlankSpace,
@@ -113,7 +139,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                       currentScreen.frame == screenFrame, currentScreen.visibleFrame == visibleFrame else { return }
                 self.placementTask = nil
                 self.stopFrameAnimation()
-                self.blankSpace = space
+                self.blankPlacement = placement
                 self.hasUserResized = false
                 self.applyLayout()
             } catch {
@@ -152,20 +178,21 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func applyLayout() {
         guard !isDragging, let panel, let screen = panel.screen ?? screen else { return }
         let openingWidth = min(preferences.openingWidth, screen.visibleFrame.width - 32)
-        let minHeight = min(minimumContentHeight, UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
-        let adaptive = preferences.placeInBlankSpace ? blankSpace : nil
-        let minimumWidth = preferences.placeInBlankSpace ? min(320, openingWidth) : openingWidth
-        panel.minSize = NSSize(width: minimumWidth, height: minHeight)
+        let minHeight = min(max(minimumContentHeight, hasExpanded ? Self.minimumChatHeight : 0), UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
+        let adaptive = preferences.placeInBlankSpace ? blankPlacement : nil
+        let minimumWidth = preferences.placeInBlankSpace ? min(Self.minimumWidth, openingWidth) : openingWidth
+        minimumSize = NSSize(width: minimumWidth, height: minHeight)
+        panel.minSize = minimumSize
         let maximumHeight = preferences.placeInBlankSpace ? screen.visibleFrame.height - 32 : min(UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
         panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: maximumHeight)
         if let adaptive, !hasUserResized {
             guard !isAnimatingLayout else { return }
-            let desired = NSSize(width: hasExpanded ? (responseWidth ?? panel.maxSize.width) : openingWidth,
-                height: hasExpanded ? (responseContentHeight ?? panel.maxSize.height) : minHeight)
-            let frame = BlankSpaceFinder.fittedFrame(in: adaptive,
-                desired: NSSize(width: min(openingWidth, desired.width), height: min(panel.maxSize.height, desired.height)),
-                minimum: panel.minSize, visible: screen.visibleFrame, fillHeight: hasExpanded)
-            setFrame(frame, animated: panel.isVisible)
+            // Keep the chosen spot's width and top edge; a sent chat then fills its quiet column.
+            var frame = CGRect(x: adaptive.base.minX, y: adaptive.base.maxY - minHeight, width: adaptive.base.width, height: minHeight)
+            if hasExpanded {
+                frame = BlankSpaceFinder.expanded(frame, in: adaptive.map, region: adaptive.region, minimumHeight: minHeight)
+            }
+            setFrame(PanelPositioning.clamped(frame, in: screen.visibleFrame), animated: panel.isVisible)
             return
         }
         if hasUserResized {
@@ -193,6 +220,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let panel, let screen = panel.screen ?? screen else { return }
         let minimum = min(minimumHeight, screen.visibleFrame.height - 32)
         panel.minSize.height = minimum
+        minimumSize.height = minimum
         guard !hasUserResized || panel.frame.height < minimum else { return }
         let targetHeight = hasUserResized ? minimum : max(minimum, min(height, UIConstants.panelMaxHeight))
         var frame = panel.frame
@@ -201,9 +229,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         setFrame(PanelPositioning.clamped(frame, to: screen), animated: animated)
     }
 
+    /// Clamps every manual resize step to the size the current content needs. The window's own
+    /// `minSize` can't be relied on: SwiftUI's hosting view resets it during layout.
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        NSSize(width: max(frameSize.width, minimumSize.width), height: max(frameSize.height, minimumSize.height))
+    }
+
     func windowWillStartLiveResize(_ notification: Notification) {
         cancelPlacement()
-        blankSpace = nil
+        blankPlacement = nil
         endDrag(restoreLayout: false)
         stopFrameAnimation()
         hasUserResized = true
@@ -212,15 +246,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowDidMove(_ notification: Notification) {
         if let activeScreen = panel?.screen, activeScreen != screen {
             cancelPlacement()
-            blankSpace = nil
+            blankPlacement = nil
         }
         screen = panel?.screen ?? screen
     }
 
     func beginDrag() {
-        if blankSpace != nil { hasUserResized = true }
+        if blankPlacement != nil { hasUserResized = true }
         cancelPlacement()
-        blankSpace = nil
+        blankPlacement = nil
         stopFrameAnimation()
         isDragging = true
         currentSnap = nil
@@ -261,7 +295,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         applyWindowAppearance()
         if !preferences.placeInBlankSpace {
             cancelPlacement()
-            blankSpace = nil
+            blankPlacement = nil
         }
         if !preferences.snapToDefaultPosition {
             currentSnap = nil

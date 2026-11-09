@@ -39,6 +39,18 @@ Attachments stay with their question, so follow-ups can refer back to them. Retr
 
 Images and PDF page images need a vision-capable model. Text files and PDF text work with any model.
 
+## Diagrams
+
+Answers can include Mermaid diagrams: flowcharts, sequence, class, state, and entity-relationship diagrams, Gantt charts, and more. kk draws them on your Mac with a bundled copy of Mermaid, using the system font and your accent color, in light or dark appearance. Nothing is downloaded, and diagrams can't load content or open links.
+
+Flowcharts and sequence diagrams can include math written as `$$…$$` inside a label, such as `A["$$\frac{1}{2}mv^2$$"]`. Single dollar signs, and math in other diagram types, appear as plain text.
+
+While an answer streams, each diagram shows **Drawing diagram…** and appears when the answer finishes. Hover a diagram to enlarge it, copy it as an image, or show its Mermaid source; click it to enlarge, or right-click for the same actions.
+
+If a diagram has a syntax error, kk shows **Fixing diagram…** and sends one hidden request to your model with the broken diagram, the parser's error, and your question. A corrected diagram replaces the broken one in the answer, so copies and follow-ups use it. If the fix also fails, kk shows the source with **Couldn't draw this diagram**; hover the message to see the error. Each diagram gets one repair attempt.
+
+**Settings → Advanced → Diagrams** turns off drawing (diagrams appear as code, and the model isn't asked to make them) or just the automatic fix.
+
 ## Annotations
 
 Choose a tool from the palette or use its shortcut while the canvas has focus:
@@ -70,7 +82,7 @@ Each answer has a **Copy** action. In **Settings → Shortcuts**, optionally mak
 
 Drag the header to move kk, and resize from an edge or corner. **Settings → General** controls compact/full opening size, width, placement at the default position or cursor, material, appearance, accent, and answer text size. **Settings → Advanced** controls snapping, always-on-top behavior, and which buttons appear beside the question field. Liquid Glass requires macOS 26; earlier systems use translucency.
 
-Enable **Move chat to largest blank space** to scan the chat’s display when it opens and whenever you send a message. kk looks for the largest visually quiet square, including whitespace inside other apps, and ignores faint thin dividers. Width stays within your configured opening width; both width and height shrink as needed, with a readable minimum that can overlap nearby content when space is tight. Once a message is sent, chat fills the available blank height above and below the square anchor, even beyond the usual 620-point height limit. Answers scroll within that space. Dragging or resizing takes control until the next send. This is a visual heuristic, so review its placement on busy or changing screens.
+Enable **Move chat to largest blank space** to scan the chat’s display when it opens and whenever you send a message. kk keeps chat beside the window you were working in when you opened it, using the largest area to its left, right, above, or below; if no area beside it is big enough, kk may overlap it, but avoids doing so where it can. Within that area, kk opens at its normal width in the most visually quiet spot, including whitespace inside other apps, and ignores faint thin dividers. Once a message is sent, chat grows up and down through rows that are mostly blank, so sparse icons or labels at the edges don't stop it, even beyond the usual 620-point height limit. Answers scroll within that space. Dragging or resizing takes control until the next send. This is a visual heuristic, so review its placement on busy or changing screens.
 
 Placement scans require existing **Screen Recording** access, exclude kk’s own windows, stay in memory, and are never attached to a message or sent to your provider. If access or a useful blank area is unavailable, kk keeps its normal placement. The option is off by default and takes precedence over the normal opening-position choice.
 

@@ -28,6 +28,10 @@ final class ChatController: ObservableObject {
     @Published private(set) var attachmentNotice: String?
     private var attachmentTasks: [UUID: Task<Void, Never>] = [:]
     private var attachmentNoticeTask: Task<Void, Never>?
+    let diagramRepairs = MermaidRepairStore()
+    /// Returns the Mermaid parser's error, or nil for a valid diagram. Replaceable in tests.
+    var validateDiagram: @MainActor (String) async -> String? = { await MermaidRenderer.shared.validate($0) }
+    private var diagramTasks: [UUID: Task<Void, Never>] = [:]
     private var currentPreparationTask: Task<Void, Never>?
     private var activePreparationID = UUID()
 
@@ -101,6 +105,9 @@ final class ChatController: ObservableObject {
         capturedScreenNames = []
         captureDeniedWithGrantedPreflight = false
         cancelAttachmentTasks()
+        diagramTasks.values.forEach { $0.cancel() }
+        diagramTasks = [:]
+        diagramRepairs.reset()
         pendingAttachments = []
         isDropTargeted = false
         attachmentNotice = nil
@@ -290,7 +297,8 @@ final class ChatController: ObservableObject {
             appendingUserText: text,
             appendingImage: image,
             additionalImages: image == nil ? [] : additionalScreenData,
-            appendingAttachments: attachments
+            appendingAttachments: attachments,
+            systemPrompt: KKCopy.systemPrompt(diagrams: preferences.renderDiagrams)
         )
         let request = ChatCompletionRequest(model: configuration.model, messages: requestMessages, stream: true)
 
@@ -334,6 +342,7 @@ final class ChatController: ObservableObject {
                 guard self.activeGenerationID == generationID else { return }
                 self.generationState = .completed
                 self.currentGenerationTask = nil
+                self.checkDiagrams(in: assistantID)
             } catch is CancellationError {
                 guard let self else { return }
                 guard self.activeGenerationID == generationID else { return }
@@ -360,6 +369,8 @@ final class ChatController: ObservableObject {
 
     func stop() {
         guard isStreaming else { return }
+        let stoppedID = messages.last(where: { $0.role == .assistant })?.id
+        defer { if let stoppedID { checkDiagrams(in: stoppedID) } }
         finishThinking()
         activeGenerationID = UUID()
         currentGenerationTask?.cancel()
@@ -377,7 +388,10 @@ final class ChatController: ObservableObject {
         catch { generationState = .error((error as? KKError) ?? .invalidBaseURL); return }
         currentCaptureTask?.cancel()
         activeCaptureID = UUID()
-        if let lastIndex = messages.lastIndex(where: { $0.role == .assistant }) { messages.remove(at: lastIndex) }
+        if let lastIndex = messages.lastIndex(where: { $0.role == .assistant }) {
+            diagramTasks.removeValue(forKey: messages[lastIndex].id)?.cancel()
+            messages.remove(at: lastIndex)
+        }
         if messages.last?.role == .user { messages.removeLast() }
         capturedScreenNames = lastUser.screenNames
         additionalScreenData = lastUser.additionalScreenData
@@ -397,6 +411,77 @@ final class ChatController: ObservableObject {
                 return "## \(message.role == .user ? "You" : "kk")\n\n\(body)"
             }
             .joined(separator: "\n\n")
+    }
+
+    // MARK: - Diagrams
+
+    /// Checks the finished answer's Mermaid diagrams. Each one that fails to parse gets a single
+    /// hidden repair request; a valid fix replaces the diagram in the message, so copies and
+    /// follow-up requests use it too.
+    func checkDiagrams(in messageID: UUID) {
+        guard preferences.renderDiagrams, diagramTasks[messageID] == nil,
+              let index = messages.firstIndex(where: { $0.id == messageID }), messages[index].role == .assistant else { return }
+        var codes: [String] = []
+        for block in MermaidExtractor.blocks(in: messages[index].content) {
+            let key = MermaidExtractor.key(block.code)
+            if !key.isEmpty && !codes.contains(key) && diagramRepairs.status(for: key) == nil { codes.append(key) }
+        }
+        guard !codes.isEmpty else { return }
+        // Mark diagrams first, so views show progress rather than a brief error.
+        codes.forEach { diagramRepairs.set($0, .checking) }
+        let question = messages[..<index].last(where: { $0.role == .user })?.content ?? ""
+        let repair = preferences.repairDiagrams
+        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        diagramTasks[messageID] = Task { [weak self] in
+            for code in codes {
+                guard let self, !Task.isCancelled else { return }
+                guard let error = await self.validateDiagram(code) else {
+                    self.diagramRepairs.set(code, nil)
+                    continue
+                }
+                guard !Task.isCancelled else { return }
+                guard repair else {
+                    self.diagramRepairs.set(code, .failed(error))
+                    continue
+                }
+                self.diagramRepairs.set(code, .repairing)
+                let fixed = await self.requestDiagramRepair(code: code, error: error, question: question, configuration: configuration)
+                guard !Task.isCancelled else { return }
+                if let fixed, fixed != code, await self.validateDiagram(fixed) == nil, !Task.isCancelled,
+                   self.replaceDiagram(code, with: fixed, in: messageID) {
+                    self.diagramRepairs.set(code, nil)
+                } else if !Task.isCancelled {
+                    self.diagramRepairs.set(code, .failed(error))
+                }
+            }
+            self?.diagramTasks[messageID] = nil
+        }
+    }
+
+    private func requestDiagramRepair(code: String, error: String, question: String, configuration: APIConfiguration) async -> String? {
+        var prompt = "This Mermaid diagram fails to parse.\n\nParser error:\n```\n\(error.prefix(1_000))\n```\n\nDiagram:\n```mermaid\n\(code)\n```"
+        let context = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !context.isEmpty { prompt += "\n\nThe diagram answers this question: \(context.prefix(600))" }
+        let request = ChatCompletionRequest(model: configuration.model, messages: [
+            APIMessage(role: "system", content: .text(KKCopy.diagramRepairPrompt)),
+            APIMessage(role: "user", content: .text(prompt))
+        ], stream: true)
+        var reply = ""
+        do {
+            for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
+                if case .content(let text) = delta { reply += text }
+            }
+        } catch {
+            return nil
+        }
+        return MermaidExtractor.diagram(inReply: reply)
+    }
+
+    private func replaceDiagram(_ original: String, with fixed: String, in messageID: UUID) -> Bool {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }),
+              let updated = MermaidExtractor.replacing(original, with: fixed, in: messages[index].content) else { return false }
+        messages[index].content = updated
+        return true
     }
 
     // MARK: - Attachments

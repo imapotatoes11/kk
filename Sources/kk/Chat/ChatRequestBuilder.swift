@@ -7,9 +7,10 @@ enum ChatRequestBuilder {
         appendingUserText: String? = nil,
         appendingImage: Data? = nil,
         additionalImages: [Data] = [],
-        appendingAttachments: [Attachment] = []
+        appendingAttachments: [Attachment] = [],
+        systemPrompt: String = KKCopy.systemPrompt
     ) -> [APIMessage] {
-        var result = [APIMessage(role: "system", content: .text(KKCopy.systemPrompt))]
+        var result = [APIMessage(role: "system", content: .text(systemPrompt))]
         var image = firstImage
 
         for message in chatMessages {

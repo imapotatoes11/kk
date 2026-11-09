@@ -22,7 +22,8 @@ let package = Package(
                 .product(name: "MarkdownView", package: "MarkdownView")
             ],
             path: "Sources/kk",
-            exclude: ["Resources"]
+            exclude: ["Resources/Info.plist", "Resources/AppIcon.icns"],
+            resources: [.copy("Resources/Mermaid")]
         ),
         .testTarget(
             name: "kkTests",

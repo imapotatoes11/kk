@@ -67,6 +67,9 @@ struct PanelRootView: View {
         .tint(preferences.accent.color)
         .accentColor(preferences.accent.color)
         .popover(isPresented: $chat.isPreviewPresented, arrowEdge: .bottom) { ScreenPreviewView(chat: chat) }
+        .environment(\.kkMermaidRepairs, chat.diagramRepairs)
+        .environment(\.kkRenderDiagrams, preferences.renderDiagrams)
+        .environment(\.kkDiagramAccent, preferences.accent.nsColor)
         .task {
             while !Task.isCancelled {
                 await chat.refreshScreenAccess()
@@ -280,7 +283,8 @@ struct UserMessageBubble: View {
         HStack {
             Spacer(minLength: 40)
             ResponseView(markdown: text, isStreaming: false, textSize: textSize)
-                .frame(width: max(4, ConversationLayout.bubbleWidth(text: text, available: availableWidth, fontSize: textSize) - 28))
+                // A maximum, not a fixed width, so the bubble can't hold a narrowed window wide.
+                .frame(maxWidth: max(4, ConversationLayout.bubbleWidth(text: text, available: availableWidth, fontSize: textSize) - 28))
                 .accessibilityLabel("Your question")
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))

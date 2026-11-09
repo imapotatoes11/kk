@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import kk
 
@@ -87,5 +88,38 @@ final class PopupBehaviorTests: XCTestCase {
         XCTAssertEqual(PalettePosition.popup.frame(in: visible, size: size, popup: high).maxY, high.minY - 12)
         let low = CGRect(x: -1200, y: 50, width: 680, height: 120)
         XCTAssertEqual(PalettePosition.popup.frame(in: visible, size: size, popup: low).minY, low.maxY + 12)
+    }
+}
+
+final class ManualResizeMinimumTests: XCTestCase {
+    @MainActor
+    func testManualResizeNeverShrinksBelowUsableSize() async throws {
+        _ = NSApplication.shared
+        for blankSpace in [false, true] {
+            let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+            prefs.placeInBlankSpace = blankSpace
+            let controller = PanelController(preferences: prefs, placementCapture: { _ in throw KKError.screenCapturePermission })
+            let screen = try XCTUnwrap(NSScreen.main)
+            controller.show(rootView: AnyView(Color.clear), on: screen)
+            defer { controller.hide() }
+            let panel = try XCTUnwrap(controller.panel)
+            let expectedWidth = blankSpace ? min(PanelController.minimumWidth, prefs.openingWidth) : prefs.openingWidth
+
+            // Before sending: the launcher's own height.
+            controller.updateLayout(hasResponse: false, minimumHeight: 121)
+            let launcher = controller.windowWillResize(panel, to: NSSize(width: 100, height: 30))
+            XCTAssertEqual(launcher.width, expectedWidth)
+            XCTAssertEqual(launcher.height, 121)
+
+            // After an answer: at least the chat minimum, even if the content reports less.
+            controller.updateLayout(hasResponse: true, minimumHeight: 150, contentHeight: 400, preferredWidth: 680)
+            try await Task.sleep(for: .milliseconds(400))
+            let chat = controller.windowWillResize(panel, to: NSSize(width: 100, height: 30))
+            XCTAssertEqual(chat.width, expectedWidth)
+            XCTAssertEqual(chat.height, PanelController.minimumChatHeight)
+
+            // Larger sizes pass through unchanged.
+            XCTAssertEqual(controller.windowWillResize(panel, to: NSSize(width: 700, height: 500)), NSSize(width: 700, height: 500))
+        }
     }
 }

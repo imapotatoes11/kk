@@ -92,6 +92,8 @@ final class Preferences: ObservableObject {
     @Published var allowAttachmentOnlySend: Bool { didSet { defaults.set(allowAttachmentOnlySend, forKey: "allowAttachmentOnlySend") } }
     /// Leading PDF pages sent as images for vision models. Zero sends extracted text only.
     @Published var pdfPageImageLimit: Int { didSet { defaults.set(pdfPageImageLimit, forKey: "pdfPageImageLimit") } }
+    @Published var renderDiagrams: Bool { didSet { defaults.set(renderDiagrams, forKey: "renderDiagrams") } }
+    @Published var repairDiagrams: Bool { didSet { defaults.set(repairDiagrams, forKey: "repairDiagrams") } }
     var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
     var openingWidth: CGFloat { popupSize == .compact ? BarWidths.compact[BarWidths.clamp(compactWidthLevel)] : BarWidths.full[BarWidths.clamp(fullWidthLevel)] }
     private let defaults: UserDefaults
@@ -101,6 +103,8 @@ final class Preferences: ObservableObject {
         captureDisplayMode = CaptureDisplayMode(rawValue: defaults.string(forKey: "captureDisplayMode") ?? "") ?? .cursor
         showAttachButton = defaults.object(forKey: "showAttachButton") as? Bool ?? false
         allowAttachmentOnlySend = defaults.object(forKey: "allowAttachmentOnlySend") as? Bool ?? true
+        renderDiagrams = defaults.object(forKey: "renderDiagrams") as? Bool ?? true
+        repairDiagrams = defaults.object(forKey: "repairDiagrams") as? Bool ?? true
         let pageImages = defaults.object(forKey: "pdfPageImageLimit") as? Int ?? AttachmentLimits.defaultPageImages
         pdfPageImageLimit = AttachmentLimits.pageImageOptions.contains(pageImages) ? pageImages : AttachmentLimits.defaultPageImages
         compactWidthLevel = BarWidths.clamp(defaults.object(forKey: "compactWidthLevel") as? Int ?? BarWidths.compactDefault)
@@ -184,6 +188,8 @@ final class Preferences: ObservableObject {
         snapToDefaultPosition = true
         allowAttachmentOnlySend = true
         pdfPageImageLimit = AttachmentLimits.defaultPageImages
+        renderDiagrams = true
+        repairDiagrams = true
     }
 
     private enum Keys {

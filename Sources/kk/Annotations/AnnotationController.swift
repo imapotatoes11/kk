@@ -485,9 +485,11 @@ struct AnnotationToolbar: View {
     var colorPicker = AnnotationColorPanel()
     var body: some View {
         GeometryReader { geometry in
-            // Keep all controls inside even the narrowest launcher palette.
-            let toolWidth = min(44, max(28, (geometry.size.width - 148) / 7))
-            controls(toolWidth: toolWidth)
+            // Keep all controls inside even the narrowest launcher palette. Below this width,
+            // Undo and Clear tighten and "Ask kk" becomes an icon so nothing wraps or truncates.
+            let compact = geometry.size.width < Self.compactWidth
+            let toolWidth = min(44, max(compact ? 26 : 28, (geometry.size.width - (compact ? 108 : 148)) / 7))
+            controls(toolWidth: toolWidth, compact: compact)
         }
         .buttonStyle(.plain)
         .disabled(document.isPreparing)
@@ -496,7 +498,9 @@ struct AnnotationToolbar: View {
         .foregroundStyle(Color.primary)
         .modifier(PopupSurface(material: preferences.popupMaterial))
     }
-    private func controls(toolWidth: CGFloat) -> some View {
+    static let compactWidth: CGFloat = 430
+
+    private func controls(toolWidth: CGFloat, compact: Bool) -> some View {
         HStack(spacing: 0) {
             PaletteButton("Pointer mode", action: {
                 document.finish()
@@ -537,11 +541,27 @@ struct AnnotationToolbar: View {
             }
             .help("Drawing color").accessibilityLabel("Drawing color")
             Spacer(minLength: 0)
-            PaletteButton("Undo last annotation", action: { document.undo(); onFocus() }) { Image(systemName: "arrow.uturn.backward").frame(width: 40, height: 48).contentShape(Rectangle()) }
+            PaletteButton("Undo last annotation", action: { document.undo(); onFocus() }) { Image(systemName: "arrow.uturn.backward").frame(width: compact ? 30 : 40, height: 48).contentShape(Rectangle()) }
                 .disabled(!document.canUndo).help("Undo last annotation").accessibilityLabel("Undo last annotation")
-            PaletteButton("Clear all annotations", action: { onClear(); onFocus() }) { Image(systemName: "trash").frame(width: 40, height: 48).contentShape(Rectangle()) }
+            PaletteButton("Clear all annotations", action: { onClear(); onFocus() }) { Image(systemName: "trash").frame(width: compact ? 30 : 40, height: 48).contentShape(Rectangle()) }
                 .disabled(document.annotations.isEmpty).help("Clear all annotations").accessibilityLabel("Clear all annotations")
-            PaletteButton("Ask kk", action: onFocus) { VStack(spacing: 3) { Text("Ask kk"); Text(preferences.annotationBindings["focus"]?.label ?? "—").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary) }.padding(.horizontal, 8).frame(height: PopupGeometry.actionHeight).background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius)) }
+            let focusKey = preferences.annotationBindings["focus"]?.label ?? "—"
+            PaletteButton("Ask kk", action: onFocus) {
+                VStack(spacing: 3) {
+                    if compact {
+                        Image(systemName: "text.bubble")
+                    } else {
+                        Text("Ask kk").lineLimit(1).fixedSize()
+                    }
+                    Text(focusKey).font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                }
+                .padding(.horizontal, compact ? 6 : 8)
+                .frame(minWidth: compact ? 40 : nil)
+                .frame(height: PopupGeometry.actionHeight)
+                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: PopupGeometry.actionRadius))
+            }
+            .help("Ask kk (\(focusKey))")
+            .accessibilityLabel("Ask kk")
         }
     }
 }

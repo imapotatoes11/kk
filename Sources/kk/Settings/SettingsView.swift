@@ -173,7 +173,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Markdown, code blocks, tables, and LaTeX math", systemImage: "textformat")
+                    Label("Markdown, code, tables, LaTeX math, and diagrams", systemImage: "textformat")
                     Label("Screenshots and attachments stay in memory", systemImage: "rectangle.on.rectangle")
                     Label("Requests go directly to your API provider", systemImage: "network")
                     Label("No saved conversations or analytics", systemImage: "lock.shield")
