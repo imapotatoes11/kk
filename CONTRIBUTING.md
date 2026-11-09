@@ -41,6 +41,11 @@ Scripts/package-release.sh \
 
 The packaging script verifies an arm64 executable, applies an ad-hoc signature, and creates an app ZIP, DMG, and SHA-256 checksums. It does not notarize or publish the app. Version metadata lives in `Sources/kk/Resources/Info.plist` and the Xcode project. Ad-hoc packaging uses `Scripts/adhoc.entitlements` to allow the bundled Sparkle framework to load under the hardened runtime. A future Developer ID distribution should sign all nested code with the same Team ID instead.
 
+Before publishing, launch the actual packaged Release app outside Xcode and
+confirm the menu-bar item appears. Do not substitute a helper executable for
+this check. The packaging script rejects binaries missing the bundled-framework
+runpath; signature and checksum checks alone cannot detect launch failures.
+
 ### Automatic updates
 
 kk uses [Sparkle](https://sparkle-project.org/documentation/) for signed updates.

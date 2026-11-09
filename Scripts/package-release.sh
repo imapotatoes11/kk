@@ -11,6 +11,20 @@ if [[ "$architecture" != "arm64" ]]; then
     echo "Expected an arm64 release, got: $architecture" >&2
     exit 1
 fi
+# Dynamic frameworks must resolve from the bundle without Xcode's development
+# search paths or DYLD_* environment variables. Reject broken Release binaries.
+if ! /usr/bin/otool -l "$source_app/Contents/MacOS/kk" | /usr/bin/awk '
+    $1 == "cmd" { is_runpath = ($2 == "LC_RPATH") }
+    is_runpath && $1 == "path" && ($2 == "@executable_path/../Frameworks" || $2 == "@loader_path/../Frameworks") { found = 1 }
+    END { exit !found }
+'; then
+    echo "Missing bundled-framework runpath. Rebuild with LD_RUNPATH_SEARCH_PATHS including @executable_path/../Frameworks." >&2
+    exit 1
+fi
+if [[ ! -f "$source_app/Contents/Frameworks/Sparkle.framework/Sparkle" ]]; then
+    echo "Missing bundled Sparkle framework." >&2
+    exit 1
+fi
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 ditto "$source_app" "$output_dir/kk.app"
