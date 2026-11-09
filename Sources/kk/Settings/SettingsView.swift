@@ -161,38 +161,55 @@ struct SettingsView: View {
     }
 
     private var about: some View {
-        ScrollView {
-            VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 16) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
-                    .frame(width: 72, height: 72)
+                    .frame(width: 64, height: 64)
                     .accessibilityHidden(true)
-                VStack(spacing: 6) {
-                    Text("kk").font(.system(size: 28, weight: .semibold))
-                    Text(AppVersion().description)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("kk").font(.system(size: 26, weight: .semibold))
+                        Text(AppVersion().description)
+                            .font(.callout).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                     Text("Ask about your screen, then keep the conversation going.")
-                        .foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Markdown, code, tables, LaTeX math, and diagrams", systemImage: "textformat")
+            }
+
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Label("Markdown, code, tables, math, and diagrams", systemImage: "textformat")
                     Label("Screenshots and attachments stay in memory", systemImage: "rectangle.on.rectangle")
                     Label("Requests go directly to your API provider", systemImage: "network")
                     Label("No saved conversations or analytics", systemImage: "lock.shield")
                 }
                 .font(.callout)
-                .padding(20)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-                UpdateSettingsView(updater: appState.updater)
-                LaunchAtLoginView().frame(maxWidth: 280)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    UpdateSettingsView(updater: appState.updater)
+                    LaunchAtLoginView()
+                        .font(.callout)
+                        .padding(.horizontal, 16)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Spacer(minLength: 0)
+            Divider()
+            HStack {
                 Button("Show onboarding again") { appState.replayOnboarding() }
+                Spacer()
                 Button("Quit kk") { NSApp.terminate(nil) }
             }
-            .frame(maxWidth: .infinity)
-            .padding(32)
         }
+        .padding(24)
     }
 
     private var destinationDescription: String {

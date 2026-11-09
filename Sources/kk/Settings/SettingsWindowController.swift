@@ -73,7 +73,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         window?.toolbar?.selectedItemIdentifier = sender.itemIdentifier
         if let window {
             let top = window.frame.maxY
-            let desiredHeight: CGFloat = section == .general ? 640 : (section == .shortcuts || section == .annotations || section == .advanced || section == .about ? 600 : 480)
+            let desiredHeight: CGFloat = section == .general ? 640 : (section == .shortcuts || section == .annotations || section == .advanced ? 600 : 480)
             let height = min(desiredHeight, max(360, (window.screen?.visibleFrame.height ?? 1000) - 120))
             window.setContentSize(NSSize(width: 640, height: height))
             window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
