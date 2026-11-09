@@ -20,8 +20,8 @@ enum ConversationLayout {
         return max(32, min(max(32, available - 40), ceil(textWidth(text, fontSize: size)) + 28))
     }
 
-    static func height(content: CGFloat, chrome: CGFloat, minimum: CGFloat, streaming: Bool) -> CGFloat {
+    static func height(content: CGFloat, chrome: CGFloat, minimum: CGFloat, streaming: Bool, maximum: CGFloat = UIConstants.panelMaxHeight) -> CGFloat {
         let natural = content + chrome
-        return min(UIConstants.panelMaxHeight, max(minimum, streaming ? ceil(natural / 24) * 24 : ceil(natural)))
+        return min(maximum, max(minimum, streaming ? ceil(natural / 24) * 24 : ceil(natural)))
     }
 }

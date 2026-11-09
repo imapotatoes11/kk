@@ -6,6 +6,18 @@ import Foundation
 final class ChatController: ObservableObject {
     @Published var prompt = ""
     @Published private(set) var messages: [ChatMessage] = []
+    @Published private(set) var editingMessageID: UUID?
+    @Published var editedPrompt = ""
+    @Published private(set) var revisionPreview: [ChatMessage]?
+    @Published private(set) var revisionProgress: String?
+    @Published private(set) var revisionNotice: String?
+    private var revisionTask: Task<Void, Never>?
+    private var revisionID = UUID()
+    private var failedRevision: ConversationRevisionRequest?
+    var isRevising: Bool { revisionProgress != nil }
+    var composerDisabled: Bool { editingMessageID != nil || isRevising || isPreparingScreen }
+    var visibleMessages: [ChatMessage] { revisionPreview ?? messages }
+
     @Published private(set) var screenContextState: ScreenContextState = .disabled
     @Published private(set) var generationState: GenerationState = .idle
     @Published var isPreviewPresented = false
@@ -56,7 +68,7 @@ final class ChatController: ObservableObject {
     var readyAttachments: [Attachment] { pendingAttachments.filter(\.isReady) }
     /// Attachments can be sent without a question when that is enabled in Settings → Advanced.
     var canSend: Bool {
-        guard hasPromptText || (preferences.allowAttachmentOnlySend && !readyAttachments.isEmpty),
+        guard !composerDisabled, hasPromptText || (preferences.allowAttachmentOnlySend && !readyAttachments.isEmpty),
               !hasProcessingAttachments, !isStreaming, !isPreparingScreen else { return false }
         switch screenContextState {
         case .capturing: return false
@@ -89,6 +101,11 @@ final class ChatController: ObservableObject {
     }
 
     func reset() {
+        cancelRevision()
+        revisionNotice = nil
+        failedRevision = nil
+        editingMessageID = nil
+        editedPrompt = ""
         currentPreparationTask?.cancel()
         currentPreparationTask = nil
         activePreparationID = UUID()
@@ -281,6 +298,8 @@ final class ChatController: ObservableObject {
     private func send(text: String, configuration: APIConfiguration) {
         isPreviewPresented = false
         annotatedPreviewData = nil
+        failedRevision = nil
+        revisionNotice = nil
         onSubmit?()
         let image: Data?
         if case .ready(let data) = screenContextState {
@@ -310,6 +329,7 @@ final class ChatController: ObservableObject {
         let assistantID = UUID()
         var assistant = ChatMessage(id: assistantID, role: .assistant, content: "")
         assistant.generationStartedAt = .now
+        assistant.isComplete = false
         messages.append(assistant)
         generationState = .streaming
 
@@ -340,6 +360,7 @@ final class ChatController: ObservableObject {
                 }
                 guard let self else { return }
                 guard self.activeGenerationID == generationID else { return }
+                if let index = self.messages.firstIndex(where: { $0.id == assistantID }) { self.messages[index].isComplete = true }
                 self.generationState = .completed
                 self.currentGenerationTask = nil
                 self.checkDiagrams(in: assistantID)
@@ -368,6 +389,14 @@ final class ChatController: ObservableObject {
     }
 
     func stop() {
+        if isRevising {
+            cancelRevision()
+            revisionNotice = "Revision cancelled. The original conversation was kept."
+            failedRevision = nil
+            generationState = .completed
+            for message in messages where message.role == .assistant { checkDiagrams(in: message.id) }
+            return
+        }
         guard isStreaming else { return }
         let stoppedID = messages.last(where: { $0.role == .assistant })?.id
         defer { if let stoppedID { checkDiagrams(in: stoppedID) } }
@@ -380,9 +409,10 @@ final class ChatController: ObservableObject {
     }
 
     func retry() {
+        if let failedRevision { startRevision(failedRevision); return }
         if !hasSubmitted { submit(); return }
         guard let lastUser = messages.last(where: { $0.role == .user }) else { return }
-        guard !isStreaming, !isPreparingScreen else { return }
+        guard !isStreaming, !composerDisabled else { return }
         let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
         do { _ = try configuration.validated() }
         catch { generationState = .error((error as? KKError) ?? .invalidBaseURL); return }
@@ -413,6 +443,149 @@ final class ChatController: ObservableObject {
             .joined(separator: "\n\n")
     }
 
+    // MARK: - Conversation revisions
+
+    func userIndex(forResponse responseID: UUID) -> Int? {
+        guard let index = messages.firstIndex(where: { $0.id == responseID }), index > 0,
+              messages[index].role == .assistant, messages[index - 1].role == .user else { return nil }
+        return index - 1
+    }
+
+    func beginEditing(responseID: UUID) {
+        guard !isStreaming, !composerDisabled, let index = userIndex(forResponse: responseID), messages[index + 1].isComplete else { return }
+        failedRevision = nil
+        editedPrompt = messages[index].content
+        editingMessageID = messages[index].id
+    }
+
+    func cancelEditing() {
+        editingMessageID = nil
+        editedPrompt = ""
+    }
+
+    var canSendEdit: Bool {
+        guard let id = editingMessageID, let user = messages.first(where: { $0.id == id }) else { return false }
+        return !editedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !user.attachments.isEmpty
+    }
+
+    func sendEdit() {
+        guard canSendEdit, let id = editingMessageID,
+              let index = messages.firstIndex(where: { $0.id == id }), index + 1 < messages.count else { return }
+        startRevision(ConversationRevisionRequest(responseID: messages[index + 1].id, editedPrompt: editedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)))
+    }
+
+    func retry(responseID: UUID) {
+        guard !isStreaming, !composerDisabled, let index = userIndex(forResponse: responseID), messages[index + 1].isComplete else { return }
+        startRevision(ConversationRevisionRequest(responseID: responseID, editedPrompt: nil))
+    }
+
+    private func cancelRevision() {
+        revisionID = UUID()
+        revisionTask?.cancel()
+        revisionTask = nil
+        revisionPreview = nil
+        revisionProgress = nil
+    }
+
+    private func startRevision(_ operation: ConversationRevisionRequest) {
+        guard !isStreaming, !isRevising, !isPreparingScreen, let start = userIndex(forResponse: operation.responseID) else { return }
+        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        do { _ = try configuration.validated() }
+        catch { generationState = .error((error as? KKError) ?? .invalidBaseURL); return }
+        let original = messages
+        // Pause diagram repair before taking over these messages. A late repair must not
+        // overwrite a revision or mutate the source branch during the transaction.
+        for message in original { diagramTasks.removeValue(forKey: message.id)?.cancel() }
+        diagramRepairs.reset()
+        cancelEditing()
+        failedRevision = nil
+        let id = UUID()
+        revisionID = id
+        revisionNotice = nil
+        revisionProgress = "Revising answer…"
+        revisionPreview = original
+        generationState = .streaming
+        revisionTask = Task { [weak self, apiClient] in
+            guard let self else { return }
+            var revised = original
+            do {
+                if let prompt = operation.editedPrompt {
+                    var replacement = revised[start]
+                    replacement.content = prompt
+                    replacement.isInferred = false
+                    revised[start].replace(with: replacement)
+                }
+                for userIndex in stride(from: start, to: original.count - 1, by: 2) {
+                    try Task.checkCancellation()
+                    guard self.revisionID == id else { return }
+                    let answerIndex = userIndex + 1
+                    var needsAnswer = true
+                    if userIndex > start {
+                        self.revisionProgress = "Checking later turn \(userIndex / 2 + 1)…"
+                        let request = try ConversationRevision.assessmentRequest(original: original, revised: revised, userIndex: userIndex, model: configuration.model)
+                        var reply = ""
+                        for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
+                            try Task.checkCancellation()
+                            if case .content(let text) = delta { reply += text }
+                        }
+                        let assessment = try ConversationRevision.parseAssessment(reply, originalPrompt: original[userIndex].content, allowsEmpty: original[userIndex].content.isEmpty)
+                        if assessment.prompt != original[userIndex].content {
+                            var replacement = revised[userIndex]
+                            replacement.content = assessment.prompt
+                            replacement.isInferred = true
+                            revised[userIndex].replace(with: replacement)
+                        }
+                        needsAnswer = assessment.regenerateAnswer || !original[answerIndex].isComplete
+                    }
+                    guard self.revisionID == id else { return }
+                    if needsAnswer {
+                        self.revisionProgress = userIndex == start ? "Revising answer…" : "Revising later answer \(userIndex / 2 + 1)…"
+                        var answer = ChatMessage(id: original[answerIndex].id, role: .assistant, content: "")
+                        answer.isComplete = false
+                        answer.generationStartedAt = .now
+                        let request = ChatCompletionRequest(model: configuration.model, messages: ChatRequestBuilder.messages(for: Array(revised[...userIndex]), firstImage: nil, systemPrompt: KKCopy.systemPrompt(diagrams: self.preferences.renderDiagrams)), stream: true)
+                        for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
+                            try Task.checkCancellation()
+                            guard self.revisionID == id else { return }
+                            switch delta {
+                            case .content(let text):
+                                if answer.reasoningStartedAt != nil && answer.reasoningEndedAt == nil { answer.reasoningEndedAt = .now }
+                                answer.content += text
+                            case .reasoning(let text):
+                                if answer.reasoningStartedAt == nil { answer.reasoningStartedAt = .now }
+                                answer.reasoning += text
+                            }
+                            var preview = revised
+                            preview[answerIndex] = answer
+                            self.revisionPreview = preview
+                        }
+                        answer.isComplete = true
+                        if answer.reasoningStartedAt != nil && answer.reasoningEndedAt == nil { answer.reasoningEndedAt = .now }
+                        revised[answerIndex].replace(with: answer)
+                    }
+                    self.revisionPreview = revised
+                }
+                try Task.checkCancellation()
+                guard self.revisionID == id else { return }
+                self.messages = revised
+                self.revisionPreview = nil
+                self.revisionProgress = nil
+                self.revisionTask = nil
+                self.generationState = .completed
+                for message in revised where message.role == .assistant { self.checkDiagrams(in: message.id) }
+            } catch {
+                guard self.revisionID == id, !Task.isCancelled else { return }
+                self.revisionPreview = nil
+                self.revisionProgress = nil
+                self.revisionTask = nil
+                self.failedRevision = operation
+                self.revisionNotice = "Revision failed. The original conversation was kept."
+                self.generationState = .error((error as? KKError) ?? .streamFailed("Revision failed. The original conversation was kept. \(error.localizedDescription)"))
+                for message in self.messages where message.role == .assistant { self.checkDiagrams(in: message.id) }
+            }
+        }
+    }
+
     // MARK: - Diagrams
 
     /// Checks the finished answer's Mermaid diagrams. Each one that fails to parse gets a single
@@ -435,7 +608,9 @@ final class ChatController: ObservableObject {
         diagramTasks[messageID] = Task { [weak self] in
             for code in codes {
                 guard let self, !Task.isCancelled else { return }
-                guard let error = await self.validateDiagram(code) else {
+                let validationError = await self.validateDiagram(code)
+                guard !Task.isCancelled else { return }
+                guard let error = validationError else {
                     self.diagramRepairs.set(code, nil)
                     continue
                 }

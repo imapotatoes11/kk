@@ -169,6 +169,10 @@ struct SettingsView: View {
                     .accessibilityHidden(true)
                 VStack(spacing: 6) {
                     Text("kk").font(.system(size: 28, weight: .semibold))
+                    Text(AppVersion().description)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                     Text("Ask about your screen, then keep the conversation going.")
                         .foregroundStyle(.secondary)
                 }
@@ -181,6 +185,7 @@ struct SettingsView: View {
                 .font(.callout)
                 .padding(20)
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                UpdateSettingsView(updater: appState.updater)
                 LaunchAtLoginView().frame(maxWidth: 280)
                 Button("Show onboarding again") { appState.replayOnboarding() }
                 Button("Quit kk") { NSApp.terminate(nil) }

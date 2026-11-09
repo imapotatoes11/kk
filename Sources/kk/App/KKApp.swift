@@ -22,8 +22,10 @@ struct KKApp: App {
 @MainActor
 final class AppState: ObservableObject {
     let preferences: Preferences
+    let updater = AppUpdater()
     let keychain: APIKeyStoring
     let captureService: ScreenCaptureService
+    let captureFlash = CaptureFlashController()
     let apiClient: OpenAICompatibleClient
     let chat: ChatController
     let panelController: PanelController
@@ -54,7 +56,7 @@ final class AppState: ObservableObject {
         let handler = AttachmentDropHandler()
         handler.isEnabled = { [weak self] in
             guard let self else { return false }
-            return !self.chat.isPreparingScreen && !self.permissionSetupActive
+            return !self.chat.composerDisabled && !self.permissionSetupActive
         }
         handler.onTargetChange = { [weak self] targeted in
             guard let self, self.chat.isDropTargeted != targeted else { return }
@@ -73,6 +75,15 @@ final class AppState: ObservableObject {
     init(preferences: Preferences = Preferences(), keychain: APIKeyStoring = KeychainStore(), clipboard: ClipboardWriting = SystemClipboardWriter(), apiClient: OpenAICompatibleClient = OpenAICompatibleClient(), captureService: ScreenCaptureService = ScreenCaptureService()) {
         self.preferences = preferences
         self.keychain = keychain
+        var configuredCapture = captureService
+        let flash = self.captureFlash
+        let existingFeedback = configuredCapture.onCaptureCompleted
+        configuredCapture.onCaptureCompleted = { [weak preferences, weak flash] displayID in
+            existingFeedback?(displayID)
+            guard let preferences, let flash else { return }
+            flash.flash(displayID: displayID, mode: preferences.captureFlash)
+        }
+        let captureService = configuredCapture
         self.captureService = captureService
         self.apiClient = apiClient
         panelController = PanelController(preferences: preferences, placementCapture: { try await captureService.capturePlacementImage(displayID: $0) })
@@ -330,12 +341,13 @@ final class AppState: ObservableObject {
     }
 
     func copyAnswer(_ text: String) {
+        guard !chat.isRevising else { return }
         copyFeedback.copy(text, near: panelController.panel?.frame)
     }
 
     @discardableResult
     func handleCopyShortcut() -> Bool {
-        guard preferences.copyShortcutAction != .disabled else { return false }
+        guard !chat.isRevising, preferences.copyShortcutAction != .disabled else { return false }
         let answer = chat.messages.last(where: { $0.role == .assistant })?.content ?? ""
         let succeeded = copyFeedback.copy(answer, near: panelController.panel?.frame)
         if succeeded && preferences.copyShortcutAction == .copyAndClose { dismissPanel() }

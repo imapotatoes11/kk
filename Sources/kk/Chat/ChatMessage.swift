@@ -8,10 +8,40 @@ struct ChatMessage: Identifiable, Equatable, Sendable {
     var additionalScreenData: [Data] = []
     var screenNames: [String] = []
     var attachments: [Attachment] = []
+    var isComplete = true
+    var isInferred = false
+    var previousVersions: [MessageVersion] = []
     var reasoning = ""
     var generationStartedAt: Date?
     var reasoningStartedAt: Date?
     var reasoningEndedAt: Date?
+
+    var version: MessageVersion {
+        MessageVersion(content: content, reasoning: reasoning, generationStartedAt: generationStartedAt,
+            reasoningStartedAt: reasoningStartedAt, reasoningEndedAt: reasoningEndedAt, isInferred: isInferred)
+    }
+
+    func displayingVersion(_ index: Int?) -> ChatMessage {
+        guard let index, previousVersions.indices.contains(index) else { return self }
+        var message = self
+        message.apply(previousVersions[index])
+        return message
+    }
+
+    mutating func replace(with replacement: ChatMessage) {
+        if version != replacement.version { previousVersions.append(version) }
+        apply(replacement.version)
+        isComplete = replacement.isComplete
+    }
+
+    private mutating func apply(_ version: MessageVersion) {
+        content = version.content
+        reasoning = version.reasoning
+        generationStartedAt = version.generationStartedAt
+        reasoningStartedAt = version.reasoningStartedAt
+        reasoningEndedAt = version.reasoningEndedAt
+        isInferred = version.isInferred
+    }
 
     func thinkingDuration(at now: Date = .now) -> TimeInterval {
         guard let reasoningStartedAt else { return 0 }

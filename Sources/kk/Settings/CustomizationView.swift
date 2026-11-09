@@ -83,6 +83,11 @@ struct CustomizationView: View {
                 Picker("Attach screen", selection: $preferences.captureDisplayMode) {
                     ForEach(CaptureDisplayMode.allCases) { Text($0.title).tag($0) }
                 }
+                Picker("Capture flash", selection: $preferences.captureFlash) {
+                    ForEach(CaptureFlash.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .help("Briefly flash the captured display after a desktop screenshot. Low uses 25% opacity. Placement scans do not flash.")
             } header: {
                 Text("Screen capture")
             } footer: {

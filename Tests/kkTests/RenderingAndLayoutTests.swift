@@ -51,6 +51,61 @@ final class RenderingAndLayoutTests: XCTestCase {
     }
 
     @MainActor
+    func testScrollToLatestAppearsWhenScrolledUpAndReturnsToBottom() async throws {
+        _ = NSApplication.shared
+        let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        prefs.baseURL = "https://fixture.invalid/v1"
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PolishResponseProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let chat = ChatController(preferences: prefs, keychain: TestKeychain(), captureService: ScreenCaptureService(), apiClient: OpenAICompatibleClient(session: session))
+        chat.prompt = "Explain this"
+        chat.submit()
+        defer { chat.reset() }
+        let host = NSHostingView(rootView: ConversationView(chat: chat, preferences: prefs, onCopyAnswer: { _ in }).frame(width: 500, height: 320).background(Color(nsColor: .windowBackgroundColor)))
+        let window = mount(host)
+        defer { window.close() }
+        try await settle(host)
+        try await settle(host)
+        let scroll = try XCTUnwrap(descendants(of: host).compactMap { $0 as? NSScrollView }.first)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertGreaterThan(document.bounds.height, scroll.contentSize.height)
+
+        let wheel = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+            wheelCount: 1, wheel1: 2000, wheel2: 0, wheel3: 0))
+        wheel.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        wheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.began.rawValue))
+        for index in 0..<2 {
+            if index > 0 { wheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.changed.rawValue)) }
+            let event = try XCTUnwrap(NSEvent(cgEvent: wheel))
+            scroll.scrollWheel(with: event)
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        wheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.ended.rawValue))
+        wheel.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: 0)
+        wheel.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: 0)
+        scroll.scrollWheel(with: try XCTUnwrap(NSEvent(cgEvent: wheel)))
+        try await settle(host)
+        XCTAssertLessThan(scroll.contentView.bounds.minY, 100, "The wheel event must actually scroll back to the start")
+        try snapshot(host, name: "chat-scrolled-up")
+        // SwiftUI plain buttons don't necessarily expose an NSButton descendant.
+        // Click the rendered control through the window's ordinary event path.
+        let local = NSPoint(x: host.bounds.midX, y: host.isFlipped ? host.bounds.maxY - 25 : host.bounds.minY + 25)
+        let point = host.convert(local, to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+            window.sendEvent(event)
+        }
+        try await settle(host)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 100)
+        XCTAssertGreaterThanOrEqual(scroll.contentView.bounds.maxY, document.bounds.height - UIConstants.scrollFollowThreshold)
+        try snapshot(host, name: "chat-returned-to-latest")
+    }
+
+    @MainActor
     func testCompletedMarkdownAndLatexRenderOnMountAndRemount() async throws {
         _ = NSApplication.shared
         let fixture = #"""

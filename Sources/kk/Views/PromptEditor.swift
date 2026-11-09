@@ -6,6 +6,8 @@ struct PromptEditor: NSViewRepresentable {
     @Binding var text: String
     var isDisabled: Bool
     var onSubmit: () -> Void
+    var onCancel: (() -> Void)? = nil
+    var registersAsComposer = true
     var accentColor: NSColor? = nil
     var onHeightChange: (CGFloat) -> Void = { _ in }
     /// Called on paste. Returns true when the pasteboard held attachments instead of text.
@@ -19,6 +21,7 @@ struct PromptEditor: NSViewRepresentable {
         let textView = PromptTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
         textView.onPasteAttachments = onPasteAttachments
         textView.string = text
         textView.font = .systemFont(ofSize: 14)
@@ -42,6 +45,7 @@ struct PromptEditor: NSViewRepresentable {
 
         let scrollView = PromptScrollView()
         scrollView.onHeightChange = onHeightChange
+        scrollView.registersAsComposer = registersAsComposer
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
@@ -59,6 +63,7 @@ struct PromptEditor: NSViewRepresentable {
         guard let textView = scrollView.documentView as? PromptTextView else { return }
         context.coordinator.parent = self
         textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
         textView.onPasteAttachments = onPasteAttachments
         textView.insertionPointColor = accentColor ?? .controlAccentColor
         (scrollView as? PromptScrollView)?.onHeightChange = onHeightChange
@@ -102,11 +107,12 @@ struct PromptEditor: NSViewRepresentable {
 
 final class PromptScrollView: NSScrollView {
     var onHeightChange: (CGFloat) -> Void = { _ in }
+    var registersAsComposer = true
     private var reportedHeight: CGFloat = 0
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        (window as? KKPanel)?.promptEditor = documentView as? NSTextView
+        if registersAsComposer { (window as? KKPanel)?.promptEditor = documentView as? NSTextView }
     }
 
     override func layout() {
@@ -132,6 +138,7 @@ final class PromptScrollView: NSScrollView {
 
 final class PromptTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onCancel: (() -> Void)?
     var onTextLayoutChange: (() -> Void)?
     var onPasteAttachments: ((NSPasteboard) -> Bool)?
 
@@ -190,7 +197,19 @@ final class PromptTextView: NSTextView {
         onTextLayoutChange?()
     }
 
+    private var keyModifiers: NSEvent.ModifierFlags?
+
+    override func keyDown(with event: NSEvent) {
+        keyModifiers = event.modifierFlags
+        defer { keyModifiers = nil }
+        super.keyDown(with: event)
+    }
+
     override func doCommand(by selector: Selector) {
+        if selector == #selector(cancelOperation(_:)), !hasMarkedText(), let onCancel {
+            onCancel()
+            return
+        }
         let newlineSelectors: Set<Selector> = [
             #selector(insertNewline(_:)),
             #selector(insertNewlineIgnoringFieldEditor(_:))
@@ -199,7 +218,7 @@ final class PromptTextView: NSTextView {
             super.doCommand(by: selector)
             return
         }
-        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+        if (keyModifiers ?? NSApp.currentEvent?.modifierFlags)?.contains(.shift) == true {
             insertNewline(nil)
         } else {
             onSubmit?()

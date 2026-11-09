@@ -19,6 +19,14 @@ struct AdvancedSettingsView: View {
             }
 
             Section {
+                Toggle("Wrap long LaTeX equations", isOn: $preferences.wrapLaTeX)
+            } header: {
+                Text("Math")
+            } footer: {
+                Text("Break long display equations at operators to fit the chat width. Fractions, matrices, and other expressions that cannot be split safely still scroll horizontally. Copied equations stay unchanged.")
+            }
+
+            Section {
                 Toggle("Draw Mermaid diagrams", isOn: $preferences.renderDiagrams)
                 Toggle("Fix diagrams that don't render", isOn: $preferences.repairDiagrams)
                     .disabled(!preferences.renderDiagrams)

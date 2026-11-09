@@ -3,18 +3,24 @@ import SwiftUI
 
 struct ResponseView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.kkWrapLaTeX) private var wrapLaTeX
+    @State private var availableWidth: CGFloat = 0
     let markdown: String
     let isStreaming: Bool
     var textSize: CGFloat = 14
 
+    private var renderedMarkdown: String {
+        wrapLaTeX ? LaTeXWrapping.markdown(markdown, width: availableWidth, fontSize: textSize + 2) : markdown
+    }
+
     var body: some View {
         Group {
             if isStreaming {
-                StreamingResponse(markdown: markdown)
+                StreamingResponse(markdown: renderedMarkdown)
             } else {
                 // A completed answer must not depend on an already-finished update stream.
                 // This also gives reference links, tables and math a final full parse.
-                MarkdownReader(markdown) { result in
+                MarkdownReader(renderedMarkdown) { result in
                     MarkdownView(result)
                         .foregroundColor(colorScheme == .dark ? .white : .primary)
                 }
@@ -32,6 +38,9 @@ struct ResponseView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            if abs(width - availableWidth) > 1 { availableWidth = width }
+        }
         .accessibilityLabel(isStreaming ? "Answer streaming" : "Assistant answer")
     }
 }

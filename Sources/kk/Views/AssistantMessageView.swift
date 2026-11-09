@@ -5,6 +5,9 @@ struct AssistantMessageView: View {
     let isStreaming: Bool
     @ObservedObject var preferences: Preferences
     let onCopy: () -> Void
+    var onRetry: (() -> Void)? = nil
+    var onEdit: (() -> Void)? = nil
+    var actionsDisabled = false
     @State private var expanded = false
     @State private var showActivity = false
 
@@ -43,9 +46,15 @@ struct AssistantMessageView: View {
             }
             if !message.content.isEmpty {
                 ResponseView(markdown: message.content, isStreaming: isStreaming, textSize: preferences.answerTextSize.points)
-                Button(action: onCopy) { Label("Copy", systemImage: "doc.on.doc") }
-                    .buttonStyle(.borderless).font(.system(size: 11)).foregroundStyle(.secondary)
-                    .accessibilityLabel("Copy answer")
+                HStack(spacing: 14) {
+                    Button(action: onCopy) { Label("Copy", systemImage: "doc.on.doc") }
+                        .accessibilityLabel("Copy answer")
+                        .help("Copy the newest answer, including when viewing an older version")
+                    if let onRetry { Button(action: onRetry) { Label("Retry", systemImage: "arrow.clockwise") }.accessibilityLabel("Retry generation") }
+                    if let onEdit { Button(action: onEdit) { Label("Edit prompt", systemImage: "pencil") }.accessibilityLabel("Edit prompt") }
+                }
+                .buttonStyle(.borderless).font(.system(size: 11)).foregroundStyle(.secondary)
+                .disabled(actionsDisabled)
             }
         }
         .task(id: waiting) {

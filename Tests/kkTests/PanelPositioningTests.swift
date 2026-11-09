@@ -116,7 +116,7 @@ final class PanelPositioningTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertEqual(panel.frame.width, UIConstants.panelWidth)
-        XCTAssertEqual(panel.frame.height, UIConstants.panelMaxHeight)
+        XCTAssertEqual(panel.frame.height, PanelController.minimumChatHeight, "Without measured response content, use only the minimum readable chat height")
         XCTAssertEqual(panel.frame.midX, raw.midX, accuracy: 1)
     }
 }

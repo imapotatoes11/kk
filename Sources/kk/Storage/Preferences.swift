@@ -87,11 +87,13 @@ final class Preferences: ObservableObject {
     @Published var fullWidthLevel: Int { didSet { defaults.set(fullWidthLevel, forKey: "fullWidthLevel") } }
     @Published var copyChatOnDismiss: Bool { didSet { defaults.set(copyChatOnDismiss, forKey: "copyChatOnDismiss") } }
     @Published var confirmDismissChat: Bool { didSet { defaults.set(confirmDismissChat, forKey: "confirmDismissChat") } }
+    @Published var captureFlash: CaptureFlash { didSet { defaults.set(captureFlash.rawValue, forKey: "captureFlash") } }
     @Published var captureDisplayMode: CaptureDisplayMode { didSet { defaults.set(captureDisplayMode.rawValue, forKey: "captureDisplayMode") } }
     @Published var showAttachButton: Bool { didSet { defaults.set(showAttachButton, forKey: "showAttachButton") } }
     @Published var allowAttachmentOnlySend: Bool { didSet { defaults.set(allowAttachmentOnlySend, forKey: "allowAttachmentOnlySend") } }
     /// Leading PDF pages sent as images for vision models. Zero sends extracted text only.
     @Published var pdfPageImageLimit: Int { didSet { defaults.set(pdfPageImageLimit, forKey: "pdfPageImageLimit") } }
+    @Published var wrapLaTeX: Bool { didSet { defaults.set(wrapLaTeX, forKey: "wrapLaTeX") } }
     @Published var renderDiagrams: Bool { didSet { defaults.set(renderDiagrams, forKey: "renderDiagrams") } }
     @Published var repairDiagrams: Bool { didSet { defaults.set(repairDiagrams, forKey: "repairDiagrams") } }
     var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
@@ -100,9 +102,11 @@ final class Preferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        captureFlash = CaptureFlash(rawValue: defaults.string(forKey: "captureFlash") ?? "") ?? .off
         captureDisplayMode = CaptureDisplayMode(rawValue: defaults.string(forKey: "captureDisplayMode") ?? "") ?? .cursor
         showAttachButton = defaults.object(forKey: "showAttachButton") as? Bool ?? false
         allowAttachmentOnlySend = defaults.object(forKey: "allowAttachmentOnlySend") as? Bool ?? true
+        wrapLaTeX = defaults.bool(forKey: "wrapLaTeX")
         renderDiagrams = defaults.object(forKey: "renderDiagrams") as? Bool ?? true
         repairDiagrams = defaults.object(forKey: "repairDiagrams") as? Bool ?? true
         let pageImages = defaults.object(forKey: "pdfPageImageLimit") as? Int ?? AttachmentLimits.defaultPageImages
@@ -165,6 +169,7 @@ final class Preferences: ObservableObject {
     }
 
     func resetGeneral() {
+        captureFlash = .off
         captureDisplayMode = .cursor
         compactWidthLevel = BarWidths.compactDefault
         fullWidthLevel = BarWidths.fullDefault
@@ -179,6 +184,7 @@ final class Preferences: ObservableObject {
     }
 
     func resetAdvanced() {
+        wrapLaTeX = false
         copyChatOnDismiss = false
         confirmDismissChat = false
         showPreviewButton = true

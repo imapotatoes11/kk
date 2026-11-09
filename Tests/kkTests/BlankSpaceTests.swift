@@ -40,6 +40,39 @@ final class BlankSpaceTests: XCTestCase {
         }
     }
 
+    func testTallerQuietColumnWinsAcrossSurfaceBoundary() throws {
+        // Like the reference: short, perfectly flat space at upper right;
+        // a much taller empty sidebar/page margin at lower left.
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 960)
+        let map = grid(columns: 100, rows: 80, bounds: bounds) { row, column in
+            if column >= 60 && row < 31 { return true }
+            if column < 36 && row >= 30 { return column != 18 }
+            return false
+        }
+        let spot = BlankSpaceFinder.placement(of: CGSize(width: 400, height: 360), in: map,
+            region: bounds, avoiding: nil, near: CGPoint(x: 1000, y: 800))
+        XCTAssertLessThan(spot.maxX, 440)
+        XCTAssertLessThan(spot.maxY, 610)
+        XCTAssertGreaterThan(BlankSpaceFinder.expanded(spot, in: map, region: bounds, minimumHeight: 220).height, 550)
+    }
+
+    func testTwoFlatSurfacesAndBorderAreQuietInLightAndDarkMode() throws {
+        let bounds = CGRect(x: 0, y: 0, width: 960, height: 720)
+        for (background, sidebar) in [(1.0, 0.80), (0.1, 0.30)] {
+            let context = try XCTUnwrap(CGContext(data: nil, width: 960, height: 720,
+                bitsPerComponent: 8, bytesPerRow: 960 * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.setFillColor(gray: background, alpha: 1)
+            context.fill(bounds)
+            context.setFillColor(gray: sidebar, alpha: 1)
+            context.fill(CGRect(x: 0, y: 0, width: 486, height: 720))
+            context.setFillColor(gray: (background + sidebar) / 2, alpha: 1)
+            context.fill(CGRect(x: 486, y: 0, width: 1, height: 720))
+            let map = try XCTUnwrap(BlankSpaceFinder.map(from: XCTUnwrap(context.makeImage()), screenFrame: bounds, visibleFrame: bounds))
+            XCTAssertEqual(map.blankFraction(map.bounds), 1, "A broad color change and thin border must not split empty surfaces")
+        }
+    }
+
     func testTextLikeStrokesAreOccupiedAndNegativeDisplayCoordinatesWork() throws {
         let bounds = CGRect(x: -960, y: 300, width: 960, height: 720)
         for background in [0.1, 1.0] {
@@ -123,6 +156,32 @@ final class BlankSpaceTests: XCTestCase {
         XCTAssertEqual(BlankSpaceFinder.expanded(start, in: busy, region: busy.bounds, minimumHeight: 220).height, 220, "Never below the minimum")
     }
 
+    @MainActor
+    func testPanelGrowsOnlyAsContentArrivesInBothPlacementModes() async throws {
+        _ = NSApplication.shared
+        let bitmap = try image(background: 1)
+        for quiet in [false, true] {
+            let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+            prefs.placeInBlankSpace = quiet
+            let controller = PanelController(preferences: prefs, placementCapture: { _ in bitmap })
+            let screen = try XCTUnwrap(NSScreen.main)
+            controller.show(rootView: AnyView(Color.clear), on: screen)
+            defer { controller.hide() }
+            let panel = try XCTUnwrap(controller.panel)
+            try await settle(panel, placed: quiet ? controller : nil)
+            controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 260, preferredWidth: 680, streaming: true)
+            try await settle(panel)
+            XCTAssertEqual(panel.frame.height, 260, accuracy: 2, "A short answer must not consume the available column")
+            controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 430, preferredWidth: 680, streaming: true)
+            try await settle(panel)
+            XCTAssertEqual(panel.frame.height, 430, accuracy: 2)
+            controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 1500, preferredWidth: 680, streaming: true)
+            try await settle(panel)
+            XCTAssertLessThanOrEqual(panel.frame.height, quiet ? screen.visibleFrame.height - 32 : UIConstants.panelMaxHeight)
+            XCTAssertGreaterThanOrEqual(panel.frame.height, 430)
+        }
+    }
+
     /// Scans take a moment in debug builds; wait until the panel stops moving.
     @MainActor
     private func settle(_ panel: NSPanel, placed controller: PanelController? = nil) async throws {
@@ -173,7 +232,7 @@ final class BlankSpaceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(panel.frame.minX, screen.frame.minX + screen.frame.width * 440 / 960 - 1, "Avoids the busy left side")
         controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 620, preferredWidth: 680)
         try await settle(panel)
-        XCTAssertEqual(panel.frame.height, map.bounds.height - 2 * BlankSpaceFinder.margin, accuracy: 13, "Fills the quiet column")
+        XCTAssertEqual(panel.frame.height, min(620, map.bounds.height - 2 * BlankSpaceFinder.margin), accuracy: 13, "Uses only the height the answer needs")
         XCTAssertTrue(screen.visibleFrame.contains(panel.frame))
         let frame = panel.frame
         controller.beginDrag()

@@ -15,6 +15,7 @@ enum ScreenCaptureAttemptError: Error {
 struct ScreenCaptureService: Sendable {
     var permissionCheck: @Sendable () -> Bool = { CGPreflightScreenCaptureAccess() }
     var captureAttempt: (@Sendable (CGDirectDisplayID?) async throws -> ScreenSnapshot)? = nil
+    var onCaptureCompleted: (@MainActor @Sendable (CGDirectDisplayID?) -> Void)? = nil
     var retryDelay: Duration = .milliseconds(250)
     static let selfExclusionFailureMessage = "kk couldn't exclude its own panel from the screen capture. Try closing and reopening the kk popup, or relaunching kk."
     var hasPassiveAccess: Bool { permissionCheck() }
@@ -33,6 +34,7 @@ struct ScreenCaptureService: Sendable {
                     if let captureAttempt { snapshot = try await captureAttempt(displayID) }
                     else { snapshot = try await captureOnce(displayID: displayID) }
                     try Task.checkCancellation()
+                    await onCaptureCompleted?(displayID)
                     return snapshot
                 } catch ScreenCaptureAttemptError.selfExclusionUnavailable {
                     guard attempt == 0 else { throw KKError.screenCaptureFailed(Self.selfExclusionFailureMessage) }

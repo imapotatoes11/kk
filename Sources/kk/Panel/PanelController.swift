@@ -187,10 +187,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: maximumHeight)
         if let adaptive, !hasUserResized {
             guard !isAnimatingLayout else { return }
-            // Keep the chosen spot's width and top edge; a sent chat then fills its quiet column.
+            // Quiet space is a ceiling, not an instruction to consume it before
+            // the response needs it. Grow from its top as measured text arrives.
             var frame = CGRect(x: adaptive.base.minX, y: adaptive.base.maxY - minHeight, width: adaptive.base.width, height: minHeight)
             if hasExpanded {
-                frame = BlankSpaceFinder.expanded(frame, in: adaptive.map, region: adaptive.region, minimumHeight: minHeight)
+                let available = BlankSpaceFinder.expanded(frame, in: adaptive.map, region: adaptive.region, minimumHeight: minHeight)
+                var height = min(available.height, max(minHeight, responseContentHeight ?? minHeight))
+                if responseStreaming { height = min(available.height, max(height, panel.frame.height)) }
+                frame = CGRect(x: available.minX, y: available.maxY - height, width: available.width, height: height)
             }
             setFrame(PanelPositioning.clamped(frame, in: screen.visibleFrame), animated: panel.isVisible)
             return
@@ -205,7 +209,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         guard !isAnimatingLayout else { return }
         var width = hasExpanded ? (responseWidth ?? max(UIConstants.panelWidth, openingWidth)) : openingWidth
-        var height = hasExpanded ? (responseContentHeight ?? UIConstants.panelMaxHeight) : minHeight
+        var height = hasExpanded ? (responseContentHeight ?? minHeight) : minHeight
         width = min(panel.maxSize.width, max(openingWidth, width))
         height = min(panel.maxSize.height, max(minHeight, height))
         if hasExpanded && responseStreaming {

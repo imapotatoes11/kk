@@ -99,7 +99,23 @@ enum BlankSpaceFinder {
                         }
                     }
                 }
-                blank[row * columns + column] = channels.allSatisfy { values in
+                // A straight, low-contrast surface boundary is quiet too, even when
+                // each color occupies half a cell (the sidebar/page seam, for example).
+                func flatBoundary(channel: Int) -> Bool {
+                    guard x1 > x0, y1 > y0 else { return false }
+                    func value(_ x: Int, _ y: Int) -> Int { Int(pixels[(y * width + x) * 4 + channel]) }
+                    let vertical = (y0..<y1).allSatisfy { y in
+                        (x0..<x1).allSatisfy { x in abs(value(x, y) - value(x, y0)) <= 4 }
+                    }
+                    let horizontal = (x0..<x1).allSatisfy { x in
+                        (y0..<y1).allSatisfy { y in abs(value(x, y) - value(x0, y)) <= 4 }
+                    }
+                    // At most a seam and its thin border, rather than repeated strokes.
+                    let line = vertical ? (x0..<x1).map { value($0, y0) } : (y0..<y1).map { value(x0, $0) }
+                    let transitions = zip(line, line.dropFirst()).filter { abs($0 - $1) > 4 }.count
+                    return (vertical || horizontal) && transitions <= 2
+                }
+                blank[row * columns + column] = channels.enumerated().allSatisfy { channel, values in
                     let sorted = values.sorted()
                     guard let low = sorted.first, let high = sorted.last else { return false }
                     let range = Int(high) - Int(low)
@@ -107,6 +123,7 @@ enum BlankSpaceFinder {
                     // Ignore sparse, faint dividers (roughly 1–2 pixels per cell).
                     // Keep even sparse high-contrast text, punctuation, and icon strokes.
                     guard range <= 80 else { return false }
+                    if flatBoundary(channel: channel) { return true }
                     let trim = sorted.count / 5
                     return Int(sorted[sorted.count - 1 - trim]) - Int(sorted[trim]) <= 22
                 }
@@ -149,14 +166,27 @@ enum BlankSpaceFinder {
                 let rect = CGRect(x: x, y: y, width: size.width, height: size.height)
                 // Favor spots surrounded by quiet space, not just quiet underneath.
                 let halo = rect.insetBy(dx: -40, dy: -40).intersection(map.bounds)
-                var score = map.blankFraction(rect) * 0.6 + map.blankFraction(halo) * 0.4
+                let fraction = map.blankFraction(rect)
+                var score = fraction * 0.6 + map.blankFraction(halo) * 0.4
+                let (c0, c1) = map.columnRange(rect)
+                let (r0, r1) = map.rowRange(rect)
+                let columns = max(1, c1 - c0)
+                func quiet(_ row: Int) -> Bool {
+                    Double(map.blankCount(rows: row, row + 1, columns: c0, c1)) / Double(columns) >= quietRowFraction
+                }
+                if fraction >= 0.95 && (r0..<r1).allSatisfy(quiet) {
+                    let span = expanded(rect, in: map, region: area, minimumHeight: size.height)
+                    // Once a column is quiet enough, usable reading height matters more
+                    // than a perfect single-color patch or proximity to the old position.
+                    score = 1 + Double(span.height / area.height) + 0.15 * score
+                }
                 if let window, rect.intersects(window) {
                     let overlap = rect.intersection(window)
-                    score -= 0.8 * Double(overlap.width * overlap.height / (rect.width * rect.height))
+                    score -= 2 * Double(overlap.width * overlap.height / (rect.width * rect.height))
                 }
                 let distance = hypot(rect.midX - preferred.x, rect.midY - preferred.y)
                 if let current = best {
-                    if score > current.score + 0.01 || (abs(score - current.score) <= 0.01 && distance < current.distance) {
+                    if score > current.score + 0.001 || (abs(score - current.score) <= 0.001 && distance < current.distance) {
                         best = (score, distance, rect)
                     }
                 } else {

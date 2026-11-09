@@ -14,7 +14,11 @@ fi
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 ditto "$source_app" "$output_dir/kk.app"
-codesign --force --deep --options runtime --sign - "$output_dir/kk.app"
+# Ad-hoc apps have no Team ID to match Sparkle's framework signature. Keep the
+# hardened runtime, but permit the bundled framework to load. Developer ID
+# distribution should instead sign all nested code with the same Team ID.
+script_dir=$(cd "$(dirname "$0")" && pwd)
+codesign --force --deep --options runtime --entitlements "$script_dir/adhoc.entitlements" --sign - "$output_dir/kk.app"
 codesign --verify --deep --strict "$output_dir/kk.app"
 
 ditto -c -k --sequesterRsrc --keepParent "$output_dir/kk.app" "$output_dir/kk-v$version-macos-arm64.app.zip"

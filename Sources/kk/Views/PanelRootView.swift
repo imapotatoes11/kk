@@ -69,6 +69,7 @@ struct PanelRootView: View {
         .popover(isPresented: $chat.isPreviewPresented, arrowEdge: .bottom) { ScreenPreviewView(chat: chat) }
         .environment(\.kkMermaidRepairs, chat.diagramRepairs)
         .environment(\.kkRenderDiagrams, preferences.renderDiagrams)
+        .environment(\.kkWrapLaTeX, preferences.wrapLaTeX)
         .environment(\.kkDiagramAccent, preferences.accent.nsColor)
         .task {
             while !Task.isCancelled {
@@ -78,7 +79,8 @@ struct PanelRootView: View {
         }
         .onAppear {
             panelController.panel?.onEscape = { [weak chat = chat] in
-                if chat?.isPreviewPresented == true { chat?.isPreviewPresented = false }
+                if chat?.editingMessageID != nil { chat?.cancelEditing() }
+                else if chat?.isPreviewPresented == true { chat?.isPreviewPresented = false }
                 else { onDismiss() }
             }
             resizePanel()
@@ -179,7 +181,7 @@ struct PanelRootView: View {
     }
 
     private var editor: some View {
-        PromptEditor(text: $chat.prompt, isDisabled: chat.isPreparingScreen, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) }, onPasteAttachments: { chat.addAttachments(from: $0) })
+        PromptEditor(text: $chat.prompt, isDisabled: chat.composerDisabled, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) }, onPasteAttachments: { chat.addAttachments(from: $0) })
             .frame(height: promptHeight)
             .overlay(alignment: .topLeading) {
                 if chat.prompt.isEmpty {
@@ -210,6 +212,16 @@ struct PanelRootView: View {
         VStack(alignment: .leading, spacing: 10) {
             if case .error(let error) = chat.generationState { ErrorView(error: error, onRetry: chat.retry, onOpenSettings: onOpenSettings) }
             if hasAttachmentTray { attachmentTray }
+            if let notice = chat.revisionNotice {
+                Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if let progress = chat.revisionProgress {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(progress).font(.caption).foregroundStyle(.secondary)
+                    Text("Changes apply together when finished.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             HStack(alignment: .bottom, spacing: 0) {
                 HStack(spacing: 0) {
                     editor.frame(height: max(24, promptHeight))
@@ -223,6 +235,8 @@ struct PanelRootView: View {
                         screenChip.buttonStyle(.plain)
                     }
                 }
+                    .disabled(chat.editingMessageID != nil || chat.isRevising)
+                    .opacity(chat.editingMessageID != nil || chat.isRevising ? 0.45 : 1)
                     .frame(minHeight: 32)
                     .padding(.horizontal, 12).padding(.vertical, 4)
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
@@ -254,7 +268,7 @@ struct PanelRootView: View {
     private func resizePanel() {
         let minimum = compactOpening ? compactHeight : (chat.hasSubmitted ? max(220, 45 + footerHeight + 64) : 45 + footerHeight)
         panelController.updateLayout(hasResponse: chat.hasSubmitted, minimumHeight: minimum,
-            contentHeight: chat.hasSubmitted ? ConversationLayout.height(content: conversationHeight, chrome: 46 + footerHeight, minimum: minimum, streaming: chat.isStreaming) : nil,
+            contentHeight: chat.hasSubmitted ? ConversationLayout.height(content: conversationHeight, chrome: 46 + footerHeight, minimum: minimum, streaming: chat.isStreaming, maximum: preferences.placeInBlankSpace ? .greatestFiniteMagnitude : UIConstants.panelMaxHeight) : nil,
             preferredWidth: chat.hasSubmitted ? ConversationLayout.preferredWidth(messages: chat.messages, minimum: preferences.openingWidth, textSize: preferences.answerTextSize.points) : nil,
             streaming: chat.isStreaming)
     }
@@ -266,6 +280,7 @@ struct UserMessageBubble: View {
     var textSize: CGFloat = 14
     var attachments: [Attachment] = []
     var endpointHost: String?
+    var isInferred = false
     @State private var availableWidth: CGFloat = 480
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
@@ -287,19 +302,23 @@ struct UserMessageBubble: View {
                 .frame(maxWidth: max(4, ConversationLayout.bubbleWidth(text: text, available: availableWidth, fontSize: textSize) - 28))
                 .accessibilityLabel("Your question")
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                .background(Color.accentColor.opacity(isInferred ? 0.05 : 0.12), in: RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    if isInferred { RoundedRectangle(cornerRadius: 16).strokeBorder(Color.accentColor.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [5, 4])) }
+                }
                 .accessibilityLabel("Your question: " + text)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
     }
 }
 
-private struct ConversationView: View {
+struct ConversationView: View {
     @ObservedObject var chat: ChatController
     @ObservedObject var preferences: Preferences
     let onCopyAnswer: (String) -> Void
     var onContentHeight: (CGFloat) -> Void = { _ in }
     @State private var isNearBottom = true
+    @State private var bottomIsVisible = true
     @State private var isUserScrolling = false
     @State private var contentHeight: CGFloat = 0
 
@@ -308,15 +327,8 @@ private struct ConversationView: View {
             ScrollView(.vertical) {
                 // Measure the complete content, rather than estimated lazy-row heights.
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(chat.messages) { message in
-                        VStack(alignment: .leading, spacing: 10) {
-                            if message.role == .user {
-                                UserMessageBubble(text: message.content, textSize: preferences.answerTextSize.points, attachments: message.attachments)
-                            } else {
-                                AssistantMessageView(message: message, isStreaming: chat.isStreaming && message.id == chat.messages.last?.id, preferences: preferences, onCopy: { onCopyAnswer(message.content) })
-                                if message.id != chat.messages.last?.id { Divider() }
-                            }
-                        }
+                    ForEach(chat.visibleMessages) { message in
+                        ConversationMessageRow(message: message, chat: chat, preferences: preferences, onCopy: { onCopyAnswer(message.content) })
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .id(message.id)
                     }
@@ -335,6 +347,7 @@ private struct ConversationView: View {
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - UIConstants.scrollFollowThreshold
             } action: { _, nearBottom in
+                bottomIsVisible = nearBottom
                 if isUserScrolling { isNearBottom = nearBottom }
             }
             .onScrollPhaseChange { _, phase, context in
@@ -345,8 +358,40 @@ private struct ConversationView: View {
                     isNearBottom = geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - UIConstants.scrollFollowThreshold
                 }
             }
-            .onChange(of: chat.messages.count) { _, _ in
+            .onChange(of: chat.editingMessageID) { _, id in
+                guard let id else { return }
+                isNearBottom = false
+                Task { @MainActor in
+                    await Task.yield()
+                    if chat.editingMessageID == id { proxy.scrollTo(id, anchor: .top) }
+                }
+            }
+            .onChange(of: chat.messages.last(where: { $0.role == .user })?.id) { _, _ in
+                // Sending a question resumes following. An incoming assistant row must
+                // preserve the reader's position if they scrolled up meanwhile.
                 isNearBottom = true
+                proxy.scrollTo("conversation-bottom", anchor: .bottom)
+            }
+            .overlay(alignment: .bottom) {
+                if !bottomIsVisible {
+                    Button {
+                        isNearBottom = true
+                        proxy.scrollTo("conversation-bottom", anchor: .bottom)
+                    } label: {
+                        Label("Scroll to latest", systemImage: "chevron.down")
+                            .font(.system(size: 12, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 30)
+                            .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+                            .overlay(Capsule().strokeBorder(.primary.opacity(0.15)))
+                            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Scroll to latest")
+                    .accessibilityIdentifier("scroll-to-latest")
+                    .help("Jump to the most recent message and resume automatic scrolling")
+                    .padding(.bottom, 10)
+                }
             }
             .task(id: contentHeight) {
                 // Resize the outer panel and finish the content layout before following.

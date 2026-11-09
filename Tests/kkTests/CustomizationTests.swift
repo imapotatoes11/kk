@@ -85,7 +85,7 @@ final class CustomizationTests: XCTestCase {
         }
         XCTAssertFalse(controller.isAnimatingLayout)
         XCTAssertEqual(panel.frame.width, UIConstants.panelWidth)
-        XCTAssertEqual(panel.frame.height, UIConstants.panelMaxHeight)
+        XCTAssertEqual(panel.frame.height, PanelController.minimumChatHeight, "Without measured response content, use only the minimum readable chat height")
         XCTAssertEqual(panel.frame.maxY, initial.maxY, accuracy: 1)
         XCTAssertEqual(panel.frame.midX, initial.midX, accuracy: 1)
         controller.hide()
