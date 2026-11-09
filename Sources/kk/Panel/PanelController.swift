@@ -156,14 +156,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         let adaptive = preferences.placeInBlankSpace ? blankSpace : nil
         let minimumWidth = preferences.placeInBlankSpace ? min(320, openingWidth) : openingWidth
         panel.minSize = NSSize(width: minimumWidth, height: minHeight)
-        panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: min(UIConstants.panelMaxHeight, screen.visibleFrame.height - 32))
+        let maximumHeight = preferences.placeInBlankSpace ? screen.visibleFrame.height - 32 : min(UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
+        panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: maximumHeight)
         if let adaptive, !hasUserResized {
             guard !isAnimatingLayout else { return }
             let desired = NSSize(width: hasExpanded ? (responseWidth ?? panel.maxSize.width) : openingWidth,
                 height: hasExpanded ? (responseContentHeight ?? panel.maxSize.height) : minHeight)
             let frame = BlankSpaceFinder.fittedFrame(in: adaptive,
                 desired: NSSize(width: min(openingWidth, desired.width), height: min(panel.maxSize.height, desired.height)),
-                minimum: panel.minSize, visible: screen.visibleFrame)
+                minimum: panel.minSize, visible: screen.visibleFrame, fillHeight: hasExpanded)
             setFrame(frame, animated: panel.isVisible)
             return
         }

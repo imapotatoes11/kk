@@ -1,7 +1,7 @@
 import CoreGraphics
 
 /// Local visual heuristic: blank means low variation, regardless of light/dark color.
-/// Work on a bounded bitmap, then find the largest empty square in a 12-point grid.
+/// Find a square anchor, then use the blank rows above and below it at that width.
 enum BlankSpaceFinder {
     static func find(in image: CGImage, screenFrame: CGRect, visibleFrame: CGRect, near preferred: CGPoint) -> CGRect? {
         guard screenFrame.width > 0, screenFrame.height > 0 else { return nil }
@@ -53,7 +53,24 @@ enum BlankSpaceFinder {
                 }
             }
         }
-        return largestSquare(blank: blank, columns: columns, rows: rows, cell: cell, bounds: usable, near: preferred)
+        guard let square = largestSquare(blank: blank, columns: columns, rows: rows, cell: cell, bounds: usable, near: preferred) else { return nil }
+        return extendingVertically(square, blank: blank, columns: columns, rows: rows, cell: cell, bounds: usable)
+    }
+
+    static func extendingVertically(_ square: CGRect, blank: [Bool], columns: Int, rows: Int, cell: CGFloat, bounds: CGRect) -> CGRect {
+        let left = Int(((square.minX - bounds.minX) / cell).rounded())
+        let right = Int(((square.maxX - bounds.minX) / cell).rounded())
+        var top = Int(((bounds.maxY - square.maxY) / cell).rounded())
+        var bottom = Int(((bounds.maxY - square.minY) / cell).rounded())
+        guard left >= 0, right <= columns, left < right, top >= 0, bottom <= rows,
+              blank.count == columns * rows else { return square }
+        func rowIsBlank(_ row: Int) -> Bool {
+            (left..<right).allSatisfy { blank[row * columns + $0] }
+        }
+        while top > 0 && rowIsBlank(top - 1) { top -= 1 }
+        while bottom < rows && rowIsBlank(bottom) { bottom += 1 }
+        return CGRect(x: square.minX, y: bounds.maxY - CGFloat(bottom) * cell,
+            width: square.width, height: CGFloat(bottom - top) * cell)
     }
 
     static func largestSquare(blank: [Bool], columns: Int, rows: Int, cell: CGFloat, bounds: CGRect, near preferred: CGPoint) -> CGRect? {
@@ -85,11 +102,11 @@ enum BlankSpaceFinder {
         return best
     }
 
-    static func fittedFrame(in space: CGRect, desired: CGSize, minimum: CGSize, visible: CGRect) -> CGRect {
+    static func fittedFrame(in space: CGRect, desired: CGSize, minimum: CGSize, visible: CGRect, fillHeight: Bool = false) -> CGRect {
         // Narrow first; if needed reduce height too. Keep the composer usable when the
         // detected square is too small, accepting a little overlap on both axes.
         let size = CGSize(width: max(minimum.width, min(desired.width, space.width - 16)),
-            height: max(minimum.height, min(desired.height, space.height - 16)))
+            height: max(minimum.height, fillHeight ? space.height - 16 : min(desired.height, space.height - 16)))
         return PanelPositioning.clamped(CGRect(x: space.midX - size.width / 2,
             y: space.maxY - 8 - size.height, width: size.width, height: size.height), in: visible)
     }

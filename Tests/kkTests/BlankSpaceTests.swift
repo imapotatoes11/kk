@@ -78,6 +78,29 @@ final class BlankSpaceTests: XCTestCase {
             columns: 20, rows: 20, cell: 12, bounds: CGRect(x: 0, y: 0, width: 240, height: 240), near: .zero))
     }
 
+    func testBlankColumnExtendsAboveAndBelowSquareUntilContent() throws {
+        let columns = 80, rows = 80
+        let bounds = CGRect(x: -960, y: 300, width: 960, height: 960)
+        var blank = Array(repeating: false, count: columns * rows)
+        for row in 5..<75 {
+            for column in 30..<60 { blank[row * columns + column] = true }
+        }
+        let square = try XCTUnwrap(BlankSpaceFinder.largestSquare(blank: blank, columns: columns,
+            rows: rows, cell: 12, bounds: bounds, near: CGPoint(x: -420, y: 780)))
+        let extended = BlankSpaceFinder.extendingVertically(square, blank: blank,
+            columns: columns, rows: rows, cell: 12, bounds: bounds)
+        XCTAssertEqual(extended.width, square.width)
+        XCTAssertLessThan(extended.minY, square.minY)
+        XCTAssertGreaterThan(extended.maxY, square.maxY)
+        XCTAssertEqual(extended.minY, bounds.minY + 60)
+        XCTAssertEqual(extended.maxY, bounds.maxY - 60)
+        let frame = BlankSpaceFinder.fittedFrame(in: extended, desired: CGSize(width: 680, height: 220),
+            minimum: CGSize(width: 320, height: 220), visible: bounds, fillHeight: true)
+        XCTAssertEqual(frame.height, 824, "Blank-space height must exceed the old 620-point cap, even for a short answer")
+        XCTAssertEqual(frame.minY, extended.minY + 8)
+        XCTAssertEqual(frame.maxY, extended.maxY - 8)
+    }
+
     @MainActor
     func testPreferencePersistsAndResets() {
         let name = UUID().uuidString
@@ -114,8 +137,14 @@ final class BlankSpaceTests: XCTestCase {
         controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 620, preferredWidth: 680)
         try await Task.sleep(for: .milliseconds(700))
         XCTAssertEqual(panel.frame.width, width, accuracy: 1)
+        XCTAssertEqual(panel.frame.height, max(220, space.height - 16), accuracy: 1)
+        XCTAssertEqual(panel.frame.minY, space.minY + 8, accuracy: 1)
+        XCTAssertEqual(panel.frame.maxY, space.maxY - 8, accuracy: 1)
         XCTAssertTrue(screen.visibleFrame.contains(panel.frame))
         let frame = panel.frame
+        controller.beginDrag()
+        controller.endDrag()
+        XCTAssertEqual(panel.frame, frame, "Taking manual control must preserve the taller fitted window")
         controller.moveToBlankSpace()
         controller.hide()
         try await Task.sleep(for: .milliseconds(250))
