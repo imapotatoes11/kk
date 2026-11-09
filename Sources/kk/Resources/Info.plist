@@ -9,9 +9,9 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.9.0.7b</string>
+	<string>0.9.1</string>
 	<key>CFBundleVersion</key>
-	<string>906</string>
+	<string>910</string>
 	<key>CFBundleName</key>
 	<string>kk</string>
 	<key>CFBundlePackageType</key>

@@ -63,7 +63,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         let panel = panel ?? makePanel()
         applyWindowAppearance()
-        let hostingView = NSHostingView(rootView: rootView)
+        let hostingView = PanelHostingView(rootView: rootView)
         hostingView.sizingOptions = []
         panel.contentView = hostingView
         let compact = preferences.popupSize == .compact

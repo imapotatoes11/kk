@@ -18,6 +18,33 @@ enum ImageProcessor {
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
+    /// Draws the image over white so transparent regions don't turn black in JPEG output.
+    static func flattenedOnWhite(_ image: CGImage) -> CGImage {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast: return image
+        default: break
+        }
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return image }
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(rect)
+        context.draw(image, in: rect)
+        return context.makeImage() ?? image
+    }
+
+    /// A small PNG for attachment chips.
+    static func thumbnailPNG(from image: CGImage, maxPixel: CGFloat = 96) -> Data? {
+        NSBitmapImageRep(cgImage: resizedImage(image, longEdge: maxPixel)).representation(using: .png, properties: [:])
+    }
+
+    static func jpegData(from image: CGImage, longEdge: CGFloat, quality: CGFloat) throws -> Data {
+        try encode(image, longEdge: longEdge, quality: quality)
+    }
+
     private static func encode(_ image: CGImage, longEdge: CGFloat, quality: CGFloat) throws -> Data {
         let target = resizedImage(image, longEdge: longEdge)
         let rep = NSBitmapImageRep(cgImage: target)

@@ -22,6 +22,12 @@ final class ChatController: ObservableObject {
     @Published private(set) var capturedScreenNames: [String] = []
     private var captureAdditionalScreens: [NSScreen] = []
     var prepareScreen: ((Data) async throws -> Data)?
+    var onPickFiles: (() -> Void)?
+    @Published private(set) var pendingAttachments: [Attachment] = []
+    @Published var isDropTargeted = false
+    @Published private(set) var attachmentNotice: String?
+    private var attachmentTasks: [UUID: Task<Void, Never>] = [:]
+    private var attachmentNoticeTask: Task<Void, Never>?
     private var currentPreparationTask: Task<Void, Never>?
     private var activePreparationID = UUID()
 
@@ -41,9 +47,13 @@ final class ChatController: ObservableObject {
 
     var hasSubmitted: Bool { !messages.isEmpty }
     var isStreaming: Bool { generationState.isStreaming }
+    var hasPromptText: Bool { !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var hasProcessingAttachments: Bool { pendingAttachments.contains(where: \.isProcessing) }
+    var readyAttachments: [Attachment] { pendingAttachments.filter(\.isReady) }
+    /// Attachments can be sent without a question when that is enabled in Settings → Advanced.
     var canSend: Bool {
-        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !isStreaming, !isPreparingScreen else { return false }
+        guard hasPromptText || (preferences.allowAttachmentOnlySend && !readyAttachments.isEmpty),
+              !hasProcessingAttachments, !isStreaming, !isPreparingScreen else { return false }
         switch screenContextState {
         case .capturing: return false
         default: return true
@@ -90,6 +100,10 @@ final class ChatController: ObservableObject {
         additionalScreenData = []
         capturedScreenNames = []
         captureDeniedWithGrantedPreflight = false
+        cancelAttachmentTasks()
+        pendingAttachments = []
+        isDropTargeted = false
+        attachmentNotice = nil
         prompt = ""
         messages = []
         screenContextState = .disabled
@@ -208,7 +222,6 @@ final class ChatController: ObservableObject {
     func submit() {
         guard canSend else { return }
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
 
         let configuration = APIConfiguration(
             baseURL: preferences.baseURL,
@@ -268,12 +281,16 @@ final class ChatController: ObservableObject {
             screenContextState = .sent(data)
         } else { image = nil }
 
+        let attachments = readyAttachments
+        cancelAttachmentTasks()
+        pendingAttachments = []
         let requestMessages = ChatRequestBuilder.messages(
             for: messages,
             firstImage: nil,
             appendingUserText: text,
             appendingImage: image,
-            additionalImages: image == nil ? [] : additionalScreenData
+            additionalImages: image == nil ? [] : additionalScreenData,
+            appendingAttachments: attachments
         )
         let request = ChatCompletionRequest(model: configuration.model, messages: requestMessages, stream: true)
 
@@ -281,7 +298,7 @@ final class ChatController: ObservableObject {
         let generationID = UUID()
         activeGenerationID = generationID
         prompt = ""
-        messages.append(ChatMessage(role: .user, content: text, screenData: image, additionalScreenData: image == nil ? [] : additionalScreenData, screenNames: image == nil ? [] : capturedScreenNames))
+        messages.append(ChatMessage(role: .user, content: text, screenData: image, additionalScreenData: image == nil ? [] : additionalScreenData, screenNames: image == nil ? [] : capturedScreenNames, attachments: attachments))
         let assistantID = UUID()
         var assistant = ChatMessage(id: assistantID, role: .assistant, content: "")
         assistant.generationStartedAt = .now
@@ -365,15 +382,102 @@ final class ChatController: ObservableObject {
         capturedScreenNames = lastUser.screenNames
         additionalScreenData = lastUser.additionalScreenData
         screenContextState = lastUser.screenData.map(ScreenContextState.ready) ?? .disabled
+        cancelAttachmentTasks()
+        pendingAttachments = lastUser.attachments
         send(text: lastUser.content, configuration: configuration)
     }
 
     var isMultiTurn: Bool { messages.filter { $0.role == .user }.count >= 2 }
 
     var clipboardTranscript: String {
-        messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .map { "## \($0.role == .user ? "You" : "kk")\n\n\($0.content)" }
+        messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !$0.attachments.isEmpty }
+            .map { message in
+                let attached = message.attachments.map { "_Attached: \($0.filename) (\($0.detail))_" }
+                let body = ([message.content] + attached).filter { !$0.isEmpty }.joined(separator: "\n\n")
+                return "## \(message.role == .user ? "You" : "kk")\n\n\(body)"
+            }
             .joined(separator: "\n\n")
+    }
+
+    // MARK: - Attachments
+
+    /// Adds files or pasted data. Each one loads in the background; sending waits for them.
+    func addAttachments(_ sources: [AttachmentSource]) {
+        guard !sources.isEmpty, !isPreparingScreen else { return }
+        let room = AttachmentLimits.maxPerTurn - pendingAttachments.count
+        if sources.count > room {
+            showAttachmentNotice("You can attach up to \(AttachmentLimits.maxPerTurn) files per question.")
+        }
+        let options = preferences.attachmentOptions
+        for source in sources.prefix(max(0, room)) {
+            let attachment = Attachment(filename: source.filename, kind: source.expectedKind)
+            let id = attachment.id
+            pendingAttachments.append(attachment)
+            let progress: @Sendable (String) -> Void = { [weak self] message in
+                Task { @MainActor in self?.updateAttachment(id) { if $0.isProcessing { $0.status = .processing(message) } } }
+            }
+            attachmentTasks[id] = Task { [weak self] in
+                // A detached task doesn't inherit cancellation, so forward it to stop OCR early.
+                let work = Task.detached(priority: .userInitiated) {
+                    Result { try AttachmentLoader.load(source, options: options, progress: progress) }
+                }
+                let result = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+                guard let self, !Task.isCancelled else { return }
+                self.attachmentTasks[id] = nil
+                self.updateAttachment(id) { attachment in
+                    switch result {
+                    case .success(let loaded):
+                        attachment.kind = loaded.kind
+                        attachment.content = loaded.content
+                        attachment.status = .ready
+                    case .failure(let error):
+                        attachment.status = .failed((error as? LocalizedError)?.errorDescription ?? "Couldn't read this file")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns true when the pasteboard held attachments (files, images, or PDF data).
+    @discardableResult
+    func addAttachments(from pasteboard: NSPasteboard) -> Bool {
+        let sources = AttachmentPasteboard.sources(from: pasteboard)
+        if !sources.isEmpty {
+            addAttachments(sources)
+            return true
+        }
+        return AttachmentPasteboard.receivePromisedFiles(from: pasteboard) { [weak self] sources in self?.addAttachments(sources) }
+    }
+
+    func removeAttachment(_ id: UUID) {
+        attachmentTasks[id]?.cancel()
+        attachmentTasks[id] = nil
+        pendingAttachments.removeAll { $0.id == id }
+    }
+
+    func pickFiles() {
+        guard !isPreparingScreen else { return }
+        onPickFiles?()
+    }
+
+    private func updateAttachment(_ id: UUID, _ change: (inout Attachment) -> Void) {
+        guard let index = pendingAttachments.firstIndex(where: { $0.id == id }) else { return }
+        change(&pendingAttachments[index])
+    }
+
+    private func cancelAttachmentTasks() {
+        attachmentTasks.values.forEach { $0.cancel() }
+        attachmentTasks = [:]
+    }
+
+    private func showAttachmentNotice(_ message: String) {
+        attachmentNotice = message
+        attachmentNoticeTask?.cancel()
+        attachmentNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.attachmentNotice = nil
+        }
     }
 
     private func finishThinking() {

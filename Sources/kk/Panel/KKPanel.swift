@@ -2,6 +2,7 @@ import AppKit
 
 final class KKPanel: NSPanel {
     weak var promptEditor: NSTextView?
+    var attachmentDropHandler: AttachmentDropHandler?
 
     func focusPrompt() {
         orderFrontRegardless()
@@ -22,6 +23,13 @@ final class KKPanel: NSPanel {
                 return super.performKeyEquivalent(with: event)
             }
             if onCopyShortcut?() == true { return true }
+        }
+        // Handle ⌘V here so pasted images and files attach even when the Edit menu would
+        // disable Paste for a plain-text field.
+        if event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "v",
+           let editor = firstResponder as? PromptTextView, editor.pasteAttachments() {
+            return true
         }
         return super.performKeyEquivalent(with: event)
     }

@@ -2,7 +2,7 @@ import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable {
-    case general, connection, annotations, shortcuts, about
+    case general, connection, annotations, shortcuts, advanced, about
 
     var title: String {
         switch self {
@@ -10,6 +10,7 @@ enum SettingsSection: String, CaseIterable {
         case .general: "General"
         case .annotations: "Annotations"
         case .shortcuts: "Shortcuts"
+        case .advanced: "Advanced"
         case .about: "About"
         }
     }
@@ -20,6 +21,7 @@ enum SettingsSection: String, CaseIterable {
         case .general: "slider.horizontal.3"
         case .annotations: "pencil.tip.crop.circle"
         case .shortcuts: "keyboard"
+        case .advanced: "gearshape.2"
         case .about: "info.circle"
         }
     }
@@ -46,6 +48,7 @@ struct SettingsView: View {
             case .general: CustomizationView(preferences: preferences)
             case .annotations: AnnotationsSettingsView(preferences: preferences)
             case .shortcuts: shortcuts
+            case .advanced: AdvancedSettingsView(preferences: preferences)
             case .about: about
             }
         }
@@ -66,7 +69,7 @@ struct SettingsView: View {
             } header: {
                 Text("OpenAI-compatible API")
             } footer: {
-                Text("Use a vision-capable model to ask about your screen. Changes save automatically.")
+                Text("Use a vision-capable model to ask about your screen or attached images. Changes save automatically.")
             }
 
             Section {
@@ -141,6 +144,7 @@ struct SettingsView: View {
             Section("In the popup") {
                 LabeledContent("Send question", value: "Return")
                 LabeledContent("New line", value: "Shift + Return")
+                LabeledContent("Attach copied file or image", value: "⌘V")
                 LabeledContent("Close popup or screen preview", value: "Escape")
                 LabeledContent("Open settings", value: "⌘,")
             }
@@ -170,7 +174,7 @@ struct SettingsView: View {
                 }
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Markdown, code blocks, tables, and LaTeX math", systemImage: "textformat")
-                    Label("Screenshots stay in memory", systemImage: "rectangle.on.rectangle")
+                    Label("Screenshots and attachments stay in memory", systemImage: "rectangle.on.rectangle")
                     Label("Requests go directly to your API provider", systemImage: "network")
                     Label("No saved conversations or analytics", systemImage: "lock.shield")
                 }
@@ -188,7 +192,7 @@ struct SettingsView: View {
 
     private var destinationDescription: String {
         let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: "", model: preferences.model)
-        return "Questions and attached screens go directly to \(configuration.host ?? "your configured endpoint"). Screenshots stay in memory. No conversation history or analytics are stored."
+        return "Questions, attached screens, and attached files go directly to \(configuration.host ?? "your configured endpoint"). Screenshots and attachments stay in memory. No conversation history or analytics are stored."
     }
 
     private var configurationError: String? {

@@ -8,6 +8,8 @@ struct PromptEditor: NSViewRepresentable {
     var onSubmit: () -> Void
     var accentColor: NSColor? = nil
     var onHeightChange: (CGFloat) -> Void = { _ in }
+    /// Called on paste. Returns true when the pasteboard held attachments instead of text.
+    var onPasteAttachments: (NSPasteboard) -> Bool = { _ in false }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -17,6 +19,7 @@ struct PromptEditor: NSViewRepresentable {
         let textView = PromptTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
+        textView.onPasteAttachments = onPasteAttachments
         textView.string = text
         textView.font = .systemFont(ofSize: 14)
         textView.usesAdaptiveColorMappingForDarkAppearance = false
@@ -56,6 +59,7 @@ struct PromptEditor: NSViewRepresentable {
         guard let textView = scrollView.documentView as? PromptTextView else { return }
         context.coordinator.parent = self
         textView.onSubmit = onSubmit
+        textView.onPasteAttachments = onPasteAttachments
         textView.insertionPointColor = accentColor ?? .controlAccentColor
         (scrollView as? PromptScrollView)?.onHeightChange = onHeightChange
         textView.isEditable = !isDisabled
@@ -126,9 +130,60 @@ final class PromptScrollView: NSScrollView {
     }
 }
 
-private final class PromptTextView: NSTextView {
+final class PromptTextView: NSTextView {
     var onSubmit: (() -> Void)?
     var onTextLayoutChange: (() -> Void)?
+    var onPasteAttachments: ((NSPasteboard) -> Bool)?
+
+    /// Attaches files, images, or PDF data from the pasteboard. Text pastes normally.
+    func pasteAttachments(from pasteboard: NSPasteboard = .general) -> Bool {
+        guard isEditable, AttachmentPasteboard.hasAttachments(pasteboard) else { return false }
+        return onPasteAttachments?(pasteboard) ?? false
+    }
+
+    override func paste(_ sender: Any?) {
+        if pasteAttachments() { return }
+        super.paste(sender)
+    }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(paste(_:)), isEditable, AttachmentPasteboard.hasAttachments(.general) { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    // A plain-text view would insert a dropped file's path. Attachment drags go to the shared
+    // drop handler instead, so dropping on the question field matches the rest of the popup.
+    private var dropHandler: AttachmentDropHandler? { (window as? KKPanel)?.attachmentDropHandler }
+
+    private func isAttachmentDrag(_ sender: NSDraggingInfo) -> Bool {
+        AttachmentPasteboard.hasAttachments(sender.draggingPasteboard) && dropHandler != nil
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        isAttachmentDrag(sender) ? dropHandler!.update(sender) : super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        isAttachmentDrag(sender) ? dropHandler!.update(sender) : super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        dropHandler?.exit()
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isAttachmentDrag(sender) ? dropHandler!.accepts(sender) : super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isAttachmentDrag(sender) ? dropHandler!.perform(sender) : super.performDragOperation(sender)
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        if let sender, isAttachmentDrag(sender) { return }
+        super.concludeDragOperation(sender)
+    }
 
     override func didChangeText() {
         super.didChangeText()

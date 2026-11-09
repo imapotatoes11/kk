@@ -47,6 +47,28 @@ final class AppState: ObservableObject {
     private var shortcutTask: Task<Void, Never>?
     private var settingsController: SettingsWindowController?
     private(set) var settingsWindow: NSWindow?
+    private var attachmentPicker: NSOpenPanel?
+    var attachmentPickerActive: Bool { attachmentPicker != nil }
+    private var pendingOutsideDismissal: Task<Void, Never>?
+    private lazy var attachmentDropHandler: AttachmentDropHandler = {
+        let handler = AttachmentDropHandler()
+        handler.isEnabled = { [weak self] in
+            guard let self else { return false }
+            return !self.chat.isPreparingScreen && !self.permissionSetupActive
+        }
+        handler.onTargetChange = { [weak self] targeted in
+            guard let self, self.chat.isDropTargeted != targeted else { return }
+            self.chat.isDropTargeted = targeted
+        }
+        handler.onDrop = { [weak self] pasteboard in
+            guard let self, self.chat.addAttachments(from: pasteboard) else { return false }
+            // Dropping from another app leaves it active; bring the question field back.
+            NSApp.activate(ignoringOtherApps: true)
+            self.panelController.panel?.focusPrompt()
+            return true
+        }
+        return handler
+    }()
 
     init(preferences: Preferences = Preferences(), keychain: APIKeyStoring = KeychainStore(), clipboard: ClipboardWriting = SystemClipboardWriter(), apiClient: OpenAICompatibleClient = OpenAICompatibleClient(), captureService: ScreenCaptureService = ScreenCaptureService()) {
         self.preferences = preferences
@@ -71,7 +93,8 @@ final class AppState: ObservableObject {
             self?.panelController.panel?.focusPrompt()
         }
         annotations.onEmptyCanvasClick = { [weak self] in
-            guard let self, !self.chat.hasSubmitted, self.chat.prompt.trimmingCharacters(in: .whitespacesAndNewlines).count <= 2 else { return false }
+            guard let self, !self.chat.hasSubmitted, self.chat.pendingAttachments.isEmpty,
+                  self.chat.prompt.trimmingCharacters(in: .whitespacesAndNewlines).count <= 2 else { return false }
             self.dismissPanel()
             return true
         }
@@ -88,6 +111,7 @@ final class AppState: ObservableObject {
             self?.panelController.moveToBlankSpace()
         }
         chat.onPrepareFollowUp = { [weak self] in self?.prepareFollowUp() }
+        chat.onPickFiles = { [weak self] in self?.presentAttachmentPicker() }
         chat.onAnnotate = { [weak self] in
             guard let self else { return }
             if self.annotations.canvasPanel != nil { self.annotations.focusDrawing() }
@@ -117,7 +141,7 @@ final class AppState: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard !NSApp.isActive else { return }
-                self?.dismissShortDraftAfterDeactivation()
+                self?.dismissUnlessDragStarts { $0.dismissShortDraftAfterDeactivation() }
             }
         PermissionAssistant.shared.onWillOpen = { [weak self] in self?.beginPermissionSetup() }
         PermissionAssistant.shared.onDidClose = { [weak self] in self?.endPermissionSetup() }
@@ -216,6 +240,12 @@ final class AppState: ObservableObject {
 
     func dismissPanel() {
         guard !dismissing else { return }
+        if let picker = attachmentPicker {
+            attachmentPicker = nil
+            picker.cancel(nil)
+        }
+        pendingOutsideDismissal?.cancel()
+        pendingOutsideDismissal = nil
         dismissing = true
         defer { dismissing = false }
         guard annotations.allowDiscard() else { return }
@@ -333,10 +363,58 @@ final class AppState: ObservableObject {
         onboarding?.showWindow(nil)
     }
 
+    var dismissShortDraftWouldClose: Bool { shouldDismissShortDraft }
+
     private var shouldDismissShortDraft: Bool {
         !permissionSetupActive && panelController.isVisible && !chat.hasSubmitted &&
         chat.prompt.trimmingCharacters(in: .whitespacesAndNewlines).count <= 2 &&
+        chat.pendingAttachments.isEmpty && !chat.isDropTargeted && !attachmentPickerActive &&
         annotations.document.visibleAnnotations.isEmpty && !chat.isPreviewPresented && !annotations.colorPicker.isVisible
+    }
+
+    /// Dragging a file from another app starts with a click outside kk, which would close an
+    /// empty popup. Wait until the mouse button is released, and keep kk open if a drag started
+    /// so the file can be dropped on it.
+    private func dismissUnlessDragStarts(_ dismiss: @escaping @MainActor (AppState) -> Void) {
+        pendingOutsideDismissal?.cancel()
+        pendingOutsideDismissal = nil
+        guard shouldDismissShortDraft else { return }
+        guard NSEvent.pressedMouseButtons & 1 != 0 else { dismiss(self); return }
+        let dragCount = NSPasteboard(name: .drag).changeCount
+        pendingOutsideDismissal = Task { @MainActor [weak self] in
+            while NSEvent.pressedMouseButtons & 1 != 0 {
+                try? await Task.sleep(for: .milliseconds(50))
+                if Task.isCancelled { return }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.pendingOutsideDismissal = nil
+            guard NSPasteboard(name: .drag).changeCount == dragCount else { return }
+            dismiss(self)
+        }
+    }
+
+    func presentAttachmentPicker() {
+        guard attachmentPicker == nil, let panel = panelController.panel, panel.isVisible else { return }
+        let picker = NSOpenPanel()
+        picker.title = "Attach Files"
+        picker.prompt = "Attach"
+        picker.message = "Choose images, PDFs, or text files to send with your question."
+        picker.allowsMultipleSelection = true
+        picker.canChooseDirectories = false
+        picker.canChooseFiles = true
+        picker.resolvesAliases = true
+        // Stay above the popup and the annotation canvas.
+        picker.level = NSWindow.Level(rawValue: max(panel.level.rawValue, NSWindow.Level.floating.rawValue + 2) + 1)
+        attachmentPicker = picker
+        NSApp.activate(ignoringOtherApps: true)
+        picker.begin { [weak self] response in
+            MainActor.assumeIsolated {
+                guard let self, self.attachmentPicker === picker else { return }
+                self.attachmentPicker = nil
+                if response == .OK { self.chat.addAttachments(picker.urls.map { .file($0) }) }
+                if self.panelController.isVisible { self.panelController.panel?.focusPrompt() }
+            }
+        }
     }
 
     func dismissShortDraftAfterDeactivation() {
@@ -385,11 +463,15 @@ final class AppState: ObservableObject {
         annotations.begin(on: captureScreen)
         panelController.show(rootView: AnyView(rootView), on: screen)
         panelController.panel?.onCopyShortcut = { [weak self] in self?.handleCopyShortcut() ?? false }
+        panelController.panel?.attachmentDropHandler = attachmentDropHandler
         annotations.textPanel = panelController.panel
         chat.beginCapture(for: captureScreen, additionalScreens: Array(captureScreens.dropFirst()))
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
-        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.dismissEmptyPopupOnOutsideClick() }
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            let location = NSEvent.mouseLocation
+            self?.dismissUnlessDragStarts { $0.dismissEmptyPopupOnOutsideClick(at: location) }
+        }
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             self?.dismissEmptyPopupOnOutsideClick()
             return event

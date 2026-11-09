@@ -22,20 +22,16 @@ struct CustomizationView: View {
                 .disabled(preferences.placeInBlankSpace)
                 Toggle("Move chat to largest blank space", isOn: $preferences.placeInBlankSpace)
                     .help("Scan this display locally when chat opens and each message is sent. Requires Screen Recording access.")
-                Toggle("Snap to default position", isOn: $preferences.snapToDefaultPosition)
                 Picker("Popup material", selection: $preferences.popupMaterial) {
                     ForEach(PopupMaterial.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                Toggle("Keep popup above other windows", isOn: $preferences.alwaysOnTop)
-                Toggle("Show image preview button", isOn: $preferences.showPreviewButton)
-                Toggle("Show submit button", isOn: $preferences.showSubmitButton)
             } header: {
                 Text("Popup")
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Compact opens small and smoothly expands when you ask. Either layout can be resized.")
-                    Text("At cursor opens below the pointer. Drag near the default position to snap either axis; guides appear while aligned.")
+                    Text("At cursor opens below the pointer. Window, button, and attachment options are in Advanced.")
                     if preferences.placeInBlankSpace {
                         Text("Blank-space placement scans the chat’s display on open and send, and reduces width and height to fit. Scans stay local. Without Screen Recording access, the normal opening position is used.")
                     }
@@ -90,20 +86,11 @@ struct CustomizationView: View {
             } header: {
                 Text("Screen capture")
             } footer: {
-                Text("Active uses the focused window’s display; cursor uses the pointer’s display. All attaches a separate image of each display’s visible desktop. Applies to the next capture.")
-            }
-
-            Section {
-                Toggle("Copy multi-turn chats on dismiss", isOn: $preferences.copyChatOnDismiss)
-                Toggle("Confirm before dismissing multi-turn chats", isOn: $preferences.confirmDismissChat)
-            } header: {
-                Text("Conversations")
-            } footer: {
                 HStack(alignment: .top, spacing: 16) {
-                    Text("Applies after two or more questions. Copies the conversation as Markdown, without screen images or thinking.")
+                    Text("Active uses the focused window’s display; cursor uses the pointer’s display. All attaches a separate image of each display’s visible desktop. Applies to the next capture.")
                     Spacer(minLength: 0)
-                    Button("Restore defaults") { preferences.resetCustomization() }
-                        .help("Reset customization. Your connection and keyboard shortcut stay unchanged.")
+                    Button("Restore defaults") { preferences.resetGeneral() }
+                        .help("Reset General settings. Advanced settings, your connection, and shortcuts stay unchanged.")
                         .fixedSize()
                 }
             }

@@ -28,6 +28,9 @@ struct PanelRootView: View {
             if compactOpening {
                 VStack(spacing: 0) {
                     launcherBar
+                    if hasAttachmentTray {
+                        attachmentTray.padding(.horizontal, 16).padding(.bottom, 10)
+                    }
                     if needsScreenNotice {
                         screenNotice.padding(.horizontal, 16).padding(.bottom, 12)
                     }
@@ -123,6 +126,7 @@ struct PanelRootView: View {
             dragGap(10)
             editor.frame(height: rowHeight)
                 .modifier(DraggableInsets(horizontal: 0, vertical: max(0, (rowHeight - promptHeight) / 2)))
+            if preferences.showAttachButton { dragGap(4); attachButton(height: 40) }
             if preferences.showPreviewButton && chat.currentPreviewData != nil { dragGap(4); screenChip }
             if preferences.showSubmitButton {
                 dragGap(4)
@@ -133,9 +137,38 @@ struct PanelRootView: View {
             settingsButton
         }
         .buttonStyle(.plain)
+        .modifier(AttachmentDropFeedback(isActive: chat.isDropTargeted, cornerRadius: 12))
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .modifier(DraggableInsets(horizontal: 16, vertical: 8))
+    }
+
+    private var hasAttachmentTray: Bool { !chat.pendingAttachments.isEmpty || chat.attachmentNotice != nil }
+
+    private var attachmentTray: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !chat.pendingAttachments.isEmpty {
+                AttachmentStrip(attachments: chat.pendingAttachments, endpointHost: chat.endpointHost, onRemove: chat.isPreparingScreen ? nil : { chat.removeAttachment($0) })
+            }
+            if let notice = chat.attachmentNotice {
+                Label(notice, systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func attachButton(height: CGFloat) -> some View {
+        Button(action: chat.pickFiles) {
+            Image(systemName: "paperclip").frame(width: chat.hasSubmitted ? 32 : 40, height: height).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(chat.isPreparingScreen || chat.pendingAttachments.count >= AttachmentLimits.maxPerTurn)
+        .help("Attach images, PDFs, or text files. You can also paste or drop them.")
+        .accessibilityLabel("Attach files")
+    }
+
+    private var placeholder: String {
+        if !chat.pendingAttachments.isEmpty { return chat.pendingAttachments.count == 1 ? "Ask about this file…" : "Ask about these files…" }
+        return chat.hasSubmitted ? "Ask a follow-up…" : "Ask a question…"
     }
 
     private func dragGap(_ width: CGFloat) -> some View {
@@ -143,11 +176,11 @@ struct PanelRootView: View {
     }
 
     private var editor: some View {
-        PromptEditor(text: $chat.prompt, isDisabled: chat.isPreparingScreen, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) })
+        PromptEditor(text: $chat.prompt, isDisabled: chat.isPreparingScreen, onSubmit: chat.submit, accentColor: preferences.accent.nsColor, onHeightChange: { promptHeight = min(120, max(24, $0)) }, onPasteAttachments: { chat.addAttachments(from: $0) })
             .frame(height: promptHeight)
             .overlay(alignment: .topLeading) {
                 if chat.prompt.isEmpty {
-                    Text(chat.hasSubmitted ? "Ask a follow-up…" : "Ask a question…")
+                    Text(placeholder)
                         .font(.system(size: 14)).foregroundStyle(.secondary)
                         .padding(.top, 2).allowsHitTesting(false)
                 }
@@ -173,10 +206,12 @@ struct PanelRootView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if case .error(let error) = chat.generationState { ErrorView(error: error, onRetry: chat.retry, onOpenSettings: onOpenSettings) }
+            if hasAttachmentTray { attachmentTray }
             HStack(alignment: .bottom, spacing: 0) {
                 HStack(spacing: 0) {
                     editor.frame(height: max(24, promptHeight))
                         .modifier(DraggableInsets(horizontal: 0, vertical: max(0, (max(24, promptHeight) - promptHeight) / 2)))
+                    if preferences.showAttachButton { attachButton(height: 32) }
                     if chat.hasSubmitted && preferences.annotationsEnabled && !chat.isStreaming {
                         Button { chat.onAnnotate?() } label: { Image(systemName: "pencil.tip").frame(width: 32, height: 32).contentShape(Rectangle()) }
                            .buttonStyle(.plain).disabled(chat.currentPreviewData == nil).help("Annotate this screen").accessibilityLabel("Annotate this screen")
@@ -189,6 +224,7 @@ struct PanelRootView: View {
                     .padding(.horizontal, 12).padding(.vertical, 4)
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
                     .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color(nsColor: .separatorColor)).allowsHitTesting(false) }
+                    .modifier(AttachmentDropFeedback(isActive: chat.isDropTargeted, cornerRadius: 18))
                     .modifier(DraggableInsets(horizontal: 12, vertical: 4))
                 if preferences.showSubmitButton || chat.isStreaming {
                 dragGap(10)
@@ -225,8 +261,22 @@ struct UserMessageBubble: View {
     @Environment(\.colorScheme) private var colorScheme
     let text: String
     var textSize: CGFloat = 14
+    var attachments: [Attachment] = []
+    var endpointHost: String?
     @State private var availableWidth: CGFloat = 480
     var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            if !text.isEmpty { bubble }
+            if !attachments.isEmpty {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 40)
+                    AttachmentStrip(attachments: attachments, alignment: .trailing, endpointHost: endpointHost)
+                }
+            }
+        }
+    }
+
+    private var bubble: some View {
         HStack {
             Spacer(minLength: 40)
             ResponseView(markdown: text, isStreaming: false, textSize: textSize)
@@ -257,7 +307,7 @@ private struct ConversationView: View {
                     ForEach(chat.messages) { message in
                         VStack(alignment: .leading, spacing: 10) {
                             if message.role == .user {
-                                UserMessageBubble(text: message.content, textSize: preferences.answerTextSize.points)
+                                UserMessageBubble(text: message.content, textSize: preferences.answerTextSize.points, attachments: message.attachments)
                             } else {
                                 AssistantMessageView(message: message, isStreaming: chat.isStreaming && message.id == chat.messages.last?.id, preferences: preferences, onCopy: { onCopyAnswer(message.content) })
                                 if message.id != chat.messages.last?.id { Divider() }

@@ -88,12 +88,21 @@ final class Preferences: ObservableObject {
     @Published var copyChatOnDismiss: Bool { didSet { defaults.set(copyChatOnDismiss, forKey: "copyChatOnDismiss") } }
     @Published var confirmDismissChat: Bool { didSet { defaults.set(confirmDismissChat, forKey: "confirmDismissChat") } }
     @Published var captureDisplayMode: CaptureDisplayMode { didSet { defaults.set(captureDisplayMode.rawValue, forKey: "captureDisplayMode") } }
+    @Published var showAttachButton: Bool { didSet { defaults.set(showAttachButton, forKey: "showAttachButton") } }
+    @Published var allowAttachmentOnlySend: Bool { didSet { defaults.set(allowAttachmentOnlySend, forKey: "allowAttachmentOnlySend") } }
+    /// Leading PDF pages sent as images for vision models. Zero sends extracted text only.
+    @Published var pdfPageImageLimit: Int { didSet { defaults.set(pdfPageImageLimit, forKey: "pdfPageImageLimit") } }
+    var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
     var openingWidth: CGFloat { popupSize == .compact ? BarWidths.compact[BarWidths.clamp(compactWidthLevel)] : BarWidths.full[BarWidths.clamp(fullWidthLevel)] }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         captureDisplayMode = CaptureDisplayMode(rawValue: defaults.string(forKey: "captureDisplayMode") ?? "") ?? .cursor
+        showAttachButton = defaults.object(forKey: "showAttachButton") as? Bool ?? false
+        allowAttachmentOnlySend = defaults.object(forKey: "allowAttachmentOnlySend") as? Bool ?? true
+        let pageImages = defaults.object(forKey: "pdfPageImageLimit") as? Int ?? AttachmentLimits.defaultPageImages
+        pdfPageImageLimit = AttachmentLimits.pageImageOptions.contains(pageImages) ? pageImages : AttachmentLimits.defaultPageImages
         compactWidthLevel = BarWidths.clamp(defaults.object(forKey: "compactWidthLevel") as? Int ?? BarWidths.compactDefault)
         fullWidthLevel = BarWidths.clamp(defaults.object(forKey: "fullWidthLevel") as? Int ?? BarWidths.fullDefault)
         copyChatOnDismiss = defaults.object(forKey: "copyChatOnDismiss") as? Bool ?? false
@@ -145,24 +154,36 @@ final class Preferences: ObservableObject {
         placeInBlankSpace = defaults.bool(forKey: "placeInBlankSpace")
     }
 
+    /// Restores General and Advanced settings. The connection and shortcuts are unchanged.
     func resetCustomization() {
+        resetGeneral()
+        resetAdvanced()
+    }
+
+    func resetGeneral() {
         captureDisplayMode = .cursor
         compactWidthLevel = BarWidths.compactDefault
         fullWidthLevel = BarWidths.fullDefault
-        copyChatOnDismiss = false
-        confirmDismissChat = false
-        showPreviewButton = true
-        showSubmitButton = true
         popupSize = .fullSize
         popupMaterial = .opaque
         appearance = .system
         accent = .system
-        alwaysOnTop = true
         answerTextSize = .standard
         showThinking = false
         popupOpeningPosition = .defaultPosition
-        snapToDefaultPosition = true
         placeInBlankSpace = false
+    }
+
+    func resetAdvanced() {
+        copyChatOnDismiss = false
+        confirmDismissChat = false
+        showPreviewButton = true
+        showSubmitButton = true
+        showAttachButton = false
+        alwaysOnTop = true
+        snapToDefaultPosition = true
+        allowAttachmentOnlySend = true
+        pdfPageImageLimit = AttachmentLimits.defaultPageImages
     }
 
     private enum Keys {
