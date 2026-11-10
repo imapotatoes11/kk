@@ -34,6 +34,7 @@ final class SettingsSelection: ObservableObject {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var preferences: Preferences
     @ObservedObject var selection: SettingsSelection
     @State private var apiKey = ""
@@ -163,9 +164,13 @@ struct SettingsView: View {
     private var about: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 16) {
-                Image(nsImage: NSApplication.shared.applicationIconImage)
+                // The icon Finder and the Dock show: AppIcon.icon rendered for the
+                // current icon style (light, dark, clear, or tinted). The bundle's
+                // applicationIconImage is the static light fallback.
+                Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
                     .resizable()
                     .frame(width: 64, height: 64)
+                    .id(colorScheme)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {

@@ -8,6 +8,8 @@
 	<string>dev.kw2.kk</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.9.3b</string>
 	<key>CFBundleVersion</key>

@@ -24,7 +24,7 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/kk",
-            exclude: ["Resources/Info.plist", "Resources/AppIcon.icns"],
+            exclude: ["Resources/Info.plist", "Resources/AppIcon.icon"],
             resources: [.copy("Resources/Mermaid")]
         ),
         .testTarget(
