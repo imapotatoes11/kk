@@ -34,7 +34,6 @@ final class SettingsSelection: ObservableObject {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var preferences: Preferences
     @ObservedObject var selection: SettingsSelection
     @State private var apiKey = ""
@@ -164,13 +163,9 @@ struct SettingsView: View {
     private var about: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 16) {
-                // The icon Finder and the Dock show: AppIcon.icon rendered for the
-                // current icon style (light, dark, clear, or tinted). The bundle's
-                // applicationIconImage is the static light fallback.
-                Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                Image(nsImage: preferences.iconStyle.image ?? NSApplication.shared.applicationIconImage)
                     .resizable()
                     .frame(width: 64, height: 64)
-                    .id(colorScheme)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -182,10 +177,21 @@ struct SettingsView: View {
                     Text("Ask about your screen, then keep the conversation going.")
                         .font(.callout).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Text("App icon").font(.callout).foregroundStyle(.secondary)
+                        Picker("App icon", selection: $preferences.iconStyle) {
+                            ForEach(AppIconStyle.allCases) { style in Text(style.title).tag(style) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 150)
+                        .help("Changes the icon in About and the Dock. Finder uses the bundled dark icon.")
+                    }
+                    .padding(.top, 4)
                 }
             }
 
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Markdown, code, tables, math, and diagrams", systemImage: "textformat")
                     Label("Screenshots and attachments stay in memory", systemImage: "rectangle.on.rectangle")
@@ -195,7 +201,6 @@ struct SettingsView: View {
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 4)
 
                 VStack(alignment: .leading, spacing: 16) {
                     UpdateSettingsView(updater: appState.updater)

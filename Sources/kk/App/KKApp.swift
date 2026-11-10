@@ -32,6 +32,7 @@ final class AppState: ObservableObject {
     let copyFeedback: CopyFeedbackController
     let annotations: AnnotationController
     private var deactivationObserver: AnyCancellable?
+    private var iconSubscription: AnyCancellable?
     private var captureScreens: [NSScreen] = []
     private var previousApplication: NSRunningApplication?
     var confirmChatDismissal: (() -> Bool)?
@@ -148,6 +149,9 @@ final class AppState: ObservableObject {
             return images
         }
 
+        iconSubscription = preferences.$iconStyle.removeDuplicates().sink { style in
+            if let image = style.image { NSApplication.shared.applicationIconImage = image }
+        }
         deactivationObserver = NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in

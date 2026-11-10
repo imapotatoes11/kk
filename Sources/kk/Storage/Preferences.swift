@@ -21,6 +21,9 @@ final class Preferences: ObservableObject {
     @Published var appearance: AppAppearance {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
+    @Published var iconStyle: AppIconStyle {
+        didSet { defaults.set(iconStyle.rawValue, forKey: "iconStyle") }
+    }
     @Published var accent: AppAccent {
         didSet { defaults.set(accent.rawValue, forKey: Keys.accent) }
     }
@@ -152,6 +155,7 @@ final class Preferences: ObservableObject {
         popupSize = PopupSize(rawValue: defaults.string(forKey: Keys.popupSize) ?? "") ?? .fullSize
         popupMaterial = PopupMaterial(rawValue: defaults.string(forKey: Keys.popupMaterial) ?? "") ?? .opaque
         appearance = AppAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
+        iconStyle = AppIconStyle(rawValue: defaults.string(forKey: "iconStyle") ?? "") ?? .dark
         accent = AppAccent(rawValue: defaults.string(forKey: Keys.accent) ?? "") ?? .system
         alwaysOnTop = defaults.object(forKey: Keys.alwaysOnTop) as? Bool ?? true
         answerTextSize = AnswerTextSize(rawValue: defaults.string(forKey: Keys.answerTextSize) ?? "") ?? .standard

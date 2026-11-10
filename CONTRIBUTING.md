@@ -12,6 +12,8 @@ Open `kk.xcodeproj` in Xcode and run the **kk** scheme. Development currently us
 
 The source is organized by responsibility under `Sources/kk`: app lifecycle, panel, chat, capture, annotations, API, storage, settings, and views. `Package.swift` supports package tooling and the tests in `Tests/kkTests`.
 
+Edit the icon artwork in `Sources/kk/Resources/AppIcon.icon`, then run `bash Scripts/export-icons.sh` with Xcode installed. This exports the explicit Light/Dark PNGs used by About and the Dock, plus the default dark ICNS used by Finder. The app does not modify its signed bundle when the user changes the icon preference.
+
 Run tests from the repository root:
 
 ```sh

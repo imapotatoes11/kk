@@ -25,7 +25,7 @@ let package = Package(
             ],
             path: "Sources/kk",
             exclude: ["Resources/Info.plist", "Resources/AppIcon.icon"],
-            resources: [.copy("Resources/Mermaid")]
+            resources: [.copy("Resources/Mermaid"), .copy("Resources/AppIconLight.png"), .copy("Resources/AppIconDark.png"), .copy("Resources/AppIconDark.icns")]
         ),
         .testTarget(
             name: "kkTests",

@@ -128,11 +128,17 @@ Completed responses offer **Retry** and **Edit prompt**. Editing replaces that t
 
 If you revise an earlier turn, kk asks your configured model whether each later prompt and answer still fits. It preserves independent turns, minimally revises dependent prompts, and regenerates answers when needed. These checks and regenerations use your normal endpoint and may incur additional API usage. All changes apply together; a failure or **Stop** keeps the original conversation.
 
+Revision checks request JSON mode when supported by your endpoint. If the model returns an unreadable assessment, kk makes one automatic repair attempt before showing an error. Endpoints that explicitly reject JSON mode use the same assessment instructions without that option.
+
 A dashed translucent bubble marks a prompt revised by inference. Hover a versioned message, or focus its version controls with the keyboard, to use **Prev / Next**. This inspects history without changing the active conversation. Copy buttons, transcript copies, retries, edits, and new follow-ups always use the newest versions. Versions remain in memory and are cleared when the chat closes.
 
 ## Equation wrapping
 
 Enable **Settings → Advanced → Wrap long LaTeX equations** to break display equations at top-level operators while keeping the text size unchanged. Fractions, radicals, paired delimiters, matrices, and existing multiline layouts remain intact. Expressions that cannot be split safely still scroll horizontally. Copied Markdown and equations are unchanged. The option is off by default.
+
+## App icon
+
+**Settings → About → App icon** selects a Light or Dark icon for About and the Dock, independently of window appearance. Dark is the default and the choice is remembered. Finder uses the bundled dark icon.
 
 ## Updates
 

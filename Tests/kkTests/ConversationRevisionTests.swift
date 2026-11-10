@@ -44,11 +44,15 @@ final class ConversationRevisionTests: XCTestCase {
         let regenerated = try XCTUnwrap(requests[3]["messages"] as? [[String: Any]])
         XCTAssertEqual(regenerated.count, 2, "The first replacement must not see its old answer or later turns")
         XCTAssertTrue(String(describing: regenerated.last!).contains("AQID"), "Retry/edit keeps the original screenshot")
+        XCTAssertNil(requests[3]["response_format"], "Answers must remain ordinary streamed Markdown")
+        XCTAssertEqual((requests[4]["response_format"] as? [String: String])?["type"], "json_object")
+        let later = try XCTUnwrap(requests[6]["messages"] as? [[String: Any]])
+        XCTAssertTrue(String(describing: later).contains("Six pears."), "Each later assessment sees the regenerated preceding answer")
     }
 
     @MainActor
     func testFailureRollsBackAndRetryRepeatsTheFailedRevision() async throws {
-        let fixture = RevisionFixture([.text("First"), .text("Second"), .text("New first"), .text("not JSON"),
+        let fixture = RevisionFixture([.text("First"), .text("Second"), .text("New first"), .text("not JSON"), .text("still not JSON"),
             .text("New first, again"), .text(#"{"prompt":"Next","regenerateAnswer":false}"#)])
         let (chat, session) = makeChat(fixture)
         defer { chat.reset(); session.invalidateAndCancel() }
@@ -59,6 +63,8 @@ final class ConversationRevisionTests: XCTestCase {
         XCTAssertEqual(chat.messages, original)
         XCTAssertNil(chat.revisionPreview)
         XCTAssertTrue(chat.revisionNotice?.contains("original conversation was kept") == true)
+        XCTAssertEqual(fixture.requests.count, 5, "Malformed assessments get only one automatic repair")
+        guard case .error(.revisionAssessmentFailed) = chat.generationState else { return XCTFail("Expected a specific assessment-format error") }
         chat.retry()
         try await wait { !chat.isStreaming }
         XCTAssertEqual(chat.messages[1].content, "New first, again")
@@ -114,6 +120,94 @@ final class ConversationRevisionTests: XCTestCase {
         let changed = try ConversationRevision.parseAssessment(#"{"prompt":"New","regenerateAnswer":false}"#, originalPrompt: "Old", allowsEmpty: false)
         XCTAssertTrue(changed.regenerateAnswer)
         XCTAssertEqual(try ConversationRevision.parseAssessment(#"{"prompt":"","regenerateAnswer":false}"#, originalPrompt: "", allowsEmpty: true).prompt, "")
+        for malformed in [#"{"prompt":"Next","regenerateAnswer":"false"}"#,
+                          #"{"prompt":"Next"}"#,
+                          #"{"prompt":"Next","regenerateAnswer":false} {"prompt":"Other","regenerateAnswer":true}"#,
+                          #"{"prompt":"Next","regenerateAnswer":false} {"#] {
+            XCTAssertThrowsError(try ConversationRevision.parseAssessment(malformed, originalPrompt: "Next", allowsEmpty: false))
+        }
+    }
+
+    func testAssessmentAcceptsCommentaryAndFencesWithoutDamagingQuotedCodeOrMath() throws {
+        let prompt = #"Explain {x} and \frac{a}{b}, then say \"done\"."#
+        let data = try JSONSerialization.data(withJSONObject: ["prompt": prompt, "regenerateAnswer": true])
+        let json = String(decoding: data, as: UTF8.self)
+        for reply in [json, "```json\n\(json)\n```", "Here is the assessment:\n```json\n\(json)\n```\nThis prompt needs updating."] {
+            let result = try ConversationRevision.parseAssessment(reply, originalPrompt: "Old", allowsEmpty: false)
+            XCTAssertEqual(result.prompt, prompt)
+            XCTAssertTrue(result.regenerateAnswer)
+        }
+    }
+
+    @MainActor
+    func testMalformedAssessmentIsRepairedOnceAndCascadeCommits() async throws {
+        let fixture = RevisionFixture([.text("Two apples"), .text("Four apples"), .text("Three pears"),
+            .text("I would update the follow-up to ask about pears."),
+            .text("Here is the result:\n" + #"{"prompt":"Double those pears","regenerateAnswer":false}"#), .text("Six pears")])
+        let (chat, session) = makeChat(fixture)
+        defer { chat.reset(); session.invalidateAndCancel() }
+        try await send("Two apples", chat); try await send("Double those apples", chat)
+        chat.beginEditing(responseID: chat.messages[1].id)
+        chat.editedPrompt = "Three pears"
+        chat.sendEdit()
+        try await wait { !chat.isStreaming }
+        guard case .completed = chat.generationState else { return XCTFail("Expected the repaired cascade to complete") }
+        XCTAssertEqual(chat.messages.map(\.content), ["Three pears", "Three pears", "Double those pears", "Six pears"])
+        XCTAssertTrue(chat.messages[2].isInferred)
+        XCTAssertEqual(chat.messages[2].previousVersions.first?.content, "Double those apples")
+        XCTAssertEqual(fixture.requests.count, 6)
+        XCTAssertTrue(String(describing: fixture.requests[4]["messages"]!).contains("previous assessment was not valid"))
+    }
+
+    @MainActor
+    func testUnsupportedJSONModeFallsBackOnceForTheCascade() async throws {
+        let decision = #"{"prompt":"Independent","regenerateAnswer":false}"#
+        let fixture = RevisionFixture([.text("First"), .text("Second"), .text("Third"), .text("New first"),
+            .error(400, "response_format json_object is not supported for this model"), .text(decision), .text(decision)])
+        let (chat, session) = makeChat(fixture)
+        defer { chat.reset(); session.invalidateAndCancel() }
+        for prompt in ["Start", "Independent", "Independent"] { try await send(prompt, chat) }
+        chat.retry(responseID: chat.messages[1].id)
+        try await wait { !chat.isStreaming }
+        guard case .completed = chat.generationState else { return XCTFail("Expected the compatible fallback to complete") }
+        XCTAssertEqual(chat.messages.map(\.content), ["Start", "New first", "Independent", "Second", "Independent", "Third"])
+        XCTAssertEqual(fixture.requests.count, 7)
+        XCTAssertNotNil(fixture.requests[4]["response_format"])
+        XCTAssertNil(fixture.requests[5]["response_format"])
+        XCTAssertNil(fixture.requests[6]["response_format"], "Don't retry unsupported JSON mode on every later turn")
+    }
+
+    @MainActor
+    func testAssessmentDoesNotRetryRateLimitsOrUnrelatedBadRequests() async throws {
+        for (status, message) in [(429, "Rate limit reached"), (400, "Context length exceeded"), (401, "Invalid key")] {
+            let fixture = RevisionFixture([.text("First"), .text("Second"), .text("New first"), .error(status, message)])
+            let (chat, session) = makeChat(fixture)
+            defer { chat.reset(); session.invalidateAndCancel() }
+            try await send("Start", chat); try await send("Next", chat)
+            let original = chat.messages
+            chat.retry(responseID: original[1].id)
+            try await wait { !chat.isStreaming }
+            XCTAssertEqual(chat.messages, original)
+            XCTAssertEqual(fixture.requests.count, 4)
+        }
+    }
+
+    @MainActor
+    func testStoppingDuringAssessmentRepairKeepsOriginalVersions() async throws {
+        let fixture = RevisionFixture([.text("First"), .text("Second"), .text("New first"), .text("not JSON"),
+            .text(#"{"prompt":"New next","regenerateAnswer":true}"#, delay: 0.2)])
+        let (chat, session) = makeChat(fixture)
+        defer { chat.reset(); session.invalidateAndCancel() }
+        try await send("Start", chat); try await send("Next", chat)
+        let original = chat.messages
+        chat.retry(responseID: original[1].id)
+        try await wait { fixture.requests.count == 5 }
+        chat.stop()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(chat.messages, original)
+        XCTAssertFalse(chat.isRevising)
+        XCTAssertNil(chat.revisionPreview)
+        XCTAssertEqual(fixture.requests.count, 5, "Cancellation must not launch another assessment or answer")
     }
 
     @MainActor
@@ -272,7 +366,9 @@ private final class RevisionFixture: @unchecked Sendable {
     struct Reply {
         let content: String
         let delay: TimeInterval
-        static func text(_ content: String, delay: TimeInterval = 0) -> Self { Self(content: content, delay: delay) }
+        let status: Int
+        static func text(_ content: String, delay: TimeInterval = 0) -> Self { Self(content: content, delay: delay, status: 200) }
+        static func error(_ status: Int, _ message: String) -> Self { Self(content: message, delay: 0, status: status) }
     }
     private let lock = NSLock()
     private var replies: [Reply]
@@ -312,8 +408,13 @@ private final class RevisionProtocol: URLProtocol, @unchecked Sendable {
         DispatchQueue.global().asyncAfter(deadline: .now() + reply.delay) { [self] in
             guard !cancellationLock.withLock({ cancelled }) else { return }
             let data = try! JSONSerialization.data(withJSONObject: ["choices": [["delta": ["content": reply.content]]]])
-            let body = "data: " + String(decoding: data, as: UTF8.self) + "\n\ndata: [DONE]\n\n"
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "text/event-stream"])!
+            let body: String
+            if reply.status == 200 {
+                body = "data: " + String(decoding: data, as: UTF8.self) + "\n\ndata: [DONE]\n\n"
+            } else {
+                body = String(decoding: try! JSONSerialization.data(withJSONObject: ["error": ["message": reply.content]]), as: UTF8.self)
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: nil, headerFields: ["Content-Type": reply.status == 200 ? "text/event-stream" : "application/json"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: Data(body.utf8))
             client?.urlProtocolDidFinishLoading(self)

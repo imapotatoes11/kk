@@ -9,7 +9,7 @@ struct ErrorView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label(error.localizedDescription, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.primary)
-            if let recovery = error.recoverySuggestion {
+            if let recovery = error.recoverySuggestion, recovery != error.localizedDescription {
                 Text(recovery)
                     .foregroundStyle(.secondary)
             }

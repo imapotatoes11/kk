@@ -508,6 +508,7 @@ final class ChatController: ObservableObject {
         revisionTask = Task { [weak self, apiClient] in
             guard let self else { return }
             var revised = original
+            var assessor = ConversationRevision.Assessor(client: apiClient, configuration: configuration)
             do {
                 if let prompt = operation.editedPrompt {
                     var replacement = revised[start]
@@ -522,13 +523,7 @@ final class ChatController: ObservableObject {
                     var needsAnswer = true
                     if userIndex > start {
                         self.revisionProgress = "Checking later turn \(userIndex / 2 + 1)…"
-                        let request = try ConversationRevision.assessmentRequest(original: original, revised: revised, userIndex: userIndex, model: configuration.model)
-                        var reply = ""
-                        for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
-                            try Task.checkCancellation()
-                            if case .content(let text) = delta { reply += text }
-                        }
-                        let assessment = try ConversationRevision.parseAssessment(reply, originalPrompt: original[userIndex].content, allowsEmpty: original[userIndex].content.isEmpty)
+                        let assessment = try await assessor.assess(original: original, revised: revised, userIndex: userIndex)
                         if assessment.prompt != original[userIndex].content {
                             var replacement = revised[userIndex]
                             replacement.content = assessment.prompt

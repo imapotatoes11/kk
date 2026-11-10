@@ -4,6 +4,17 @@ struct ChatCompletionRequest: Encodable, Sendable {
     let model: String
     let messages: [APIMessage]
     let stream: Bool
+    var responseFormat: ResponseFormat? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case model, messages, stream
+        case responseFormat = "response_format"
+    }
+
+    struct ResponseFormat: Encodable, Sendable {
+        let type: String
+        static let jsonObject = Self(type: "json_object")
+    }
 }
 
 struct APIMessage: Encodable, Sendable {

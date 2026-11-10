@@ -38,6 +38,22 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppIconStyle: String, CaseIterable, Identifiable {
+    case light, dark
+    var id: Self { self }
+    var title: String { rawValue.capitalized }
+
+    @MainActor var image: NSImage? {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle.main
+        #endif
+        guard let url = bundle.url(forResource: "AppIcon\(title)", withExtension: "png") else { return nil }
+        return NSImage(contentsOf: url)
+    }
+}
+
 enum AppAccent: String, CaseIterable, Identifiable {
     case system, blue, purple, pink, red, orange, green, graphite
     var id: Self { self }

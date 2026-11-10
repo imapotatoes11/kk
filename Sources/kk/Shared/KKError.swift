@@ -11,6 +11,7 @@ enum KKError: LocalizedError, Equatable {
     case rateLimited
     case server(status: Int, message: String?)
     case invalidResponse
+    case revisionAssessmentFailed
     case streamFailed(String)
 
     var errorDescription: String? {
@@ -33,6 +34,8 @@ enum KKError: LocalizedError, Equatable {
             "The provider returned an error."
         case .invalidResponse:
             "The provider returned an invalid response."
+        case .revisionAssessmentFailed:
+            "The provider couldn't format the later-turn revision."
         case .streamFailed(let reason):
             reason
         }
@@ -54,6 +57,8 @@ enum KKError: LocalizedError, Equatable {
             message
         case .streamFailed(let message):
             message
+        case .revisionAssessmentFailed:
+            "Retry to try again."
         default:
             nil
         }

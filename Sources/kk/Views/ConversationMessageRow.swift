@@ -70,10 +70,6 @@ struct InlinePromptEdit: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Edit prompt").font(.caption).foregroundStyle(.secondary)
-            Text("Later turns will be checked and revised if needed.").font(.caption2).foregroundStyle(.secondary)
-            if let message = chat.messages.first(where: { $0.id == chat.editingMessageID }), message.screenData != nil || !message.attachments.isEmpty {
-                Text("Uses this turn’s original screen and attachments.").font(.caption2).foregroundStyle(.secondary)
-            }
             PromptEditor(text: $chat.editedPrompt, isDisabled: false, onSubmit: chat.sendEdit,
                 onCancel: chat.cancelEditing, registersAsComposer: false, accentColor: preferences.accent.nsColor,
                 onHeightChange: { height = min(180, max(60, $0)) })
