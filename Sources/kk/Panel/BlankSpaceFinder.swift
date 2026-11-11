@@ -197,6 +197,21 @@ enum BlankSpaceFinder {
         return best?.rect ?? CGRect(origin: CGPoint(x: area.midX - size.width / 2, y: area.maxY - size.height), size: size)
     }
 
+    /// A frame `height` tall for the quiet `column`. Short answers hang from the column's top.
+    /// An answer taller than the column first extends upward, then downward, through the rest
+    /// of `area` (which already excludes the focused window), so available height above kk is
+    /// used too rather than leaving the answer to scroll.
+    static func fitted(_ column: CGRect, height: CGFloat, within area: CGRect) -> CGRect {
+        guard height > column.height else {
+            return CGRect(x: column.minX, y: column.maxY - height, width: column.width, height: height)
+        }
+        let ceiling = max(column.maxY, area.maxY - margin)
+        let floor = min(column.minY, area.minY + margin)
+        let top = min(ceiling, column.minY + height)
+        let bottom = max(floor, top - height)
+        return CGRect(x: column.minX, y: bottom, width: column.width, height: top - bottom)
+    }
+
     /// Grows `rect` upward and downward through quiet rows within `region`, so a sent chat fills
     /// the quiet column it sits in. Height never drops below `minimumHeight`.
     static func expanded(_ rect: CGRect, in map: BlankMap, region: CGRect, minimumHeight: CGFloat) -> CGRect {

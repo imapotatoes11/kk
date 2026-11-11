@@ -24,6 +24,8 @@ final class AnnotationController {
     private(set) var isActive = false
     var onActiveChange: ((Bool) -> Void)?
     var onFocusPopup: (() -> Void)?
+    /// Whether showing the canvas for a new capture also returns keyboard focus to the popup.
+    var focusesPopupOnCapture = true
     var onDismiss: (() -> Void)?
     var onEmptyCanvasClick: (() -> Bool)?
 
@@ -146,7 +148,7 @@ final class AnnotationController {
         if !suspended {
             overlay.orderFrontRegardless()
             toolbar.orderFrontRegardless()
-            onFocusPopup?()
+            if focusesPopupOnCapture { onFocusPopup?() }
         }
     }
 

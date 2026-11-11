@@ -13,7 +13,7 @@ struct PreparedDragApp {
                             // Touch only the containing folder, without keeping or logging its contents.
                             _ = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
                         },
-                        loadIcon: (URL) -> NSImage = { NSWorkspace.shared.icon(forFile: $0.path) }) -> Self {
+                        loadIcon: (URL) -> NSImage = { icon(for: $0) }) -> Self {
         do {
             guard appURL.pathExtension == "app",
                   appURL == Bundle.main.bundleURL || FileManager.default.fileExists(atPath: appURL.path) else {
@@ -29,5 +29,12 @@ struct PreparedDragApp {
             return Self(appURL: appURL, icon: NSImage(systemSymbolName: "app", accessibilityDescription: "kk")!, isReady: false,
                         error: "Allow access to kk’s folder, then open this helper again.")
         }
+    }
+
+    /// kk's own bundle uses the icon chosen in Settings → About. Finder's icon for a bundle can
+    /// be stale (macOS caches it per path) and doesn't follow that choice.
+    static func icon(for appURL: URL, style: AppIconStyle = .saved()) -> NSImage {
+        if appURL.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL, let image = style.image { return image }
+        return NSWorkspace.shared.icon(forFile: appURL.path)
     }
 }

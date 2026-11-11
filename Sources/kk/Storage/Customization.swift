@@ -42,6 +42,12 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
     case light, dark
     var id: Self { self }
     var title: String { rawValue.capitalized }
+    static let defaultsKey = "iconStyle"
+
+    /// The saved choice, readable before `Preferences` exists. Dark is the default.
+    static func saved(in defaults: UserDefaults = .standard) -> AppIconStyle {
+        AppIconStyle(rawValue: defaults.string(forKey: defaultsKey) ?? "") ?? .dark
+    }
 
     @MainActor var image: NSImage? {
         #if SWIFT_PACKAGE

@@ -29,9 +29,18 @@ enum Defaults {
 enum KKCopy {
     static var systemPrompt: String { systemPrompt(diagrams: true) }
 
-    static func systemPrompt(diagrams: Bool) -> String {
-        diagrams ? basePrompt + " " + diagramGuidance : basePrompt
+    static func systemPrompt(diagrams: Bool, customInstructions: String = "") -> String {
+        let prompt = diagrams ? basePrompt + " " + diagramGuidance : basePrompt
+        let custom = String(customInstructions.prefix(customInstructionsLimit)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !custom.isEmpty else { return prompt }
+        return prompt + "\n\n" + customInstructionsPreamble + "\n<user_instructions>\n" + custom + "\n</user_instructions>"
     }
+
+    /// Roughly a page of text; keeps every request's prompt overhead bounded.
+    static let customInstructionsLimit = 4_000
+    static let customInstructionsPreamble = """
+    The user has provided the following custom instructions for how you should respond. Follow them in every answer unless they conflict with the user's current request, which takes priority.
+    """
 
     static let diagramGuidance = """
     When a diagram would genuinely clarify the answer (a process, sequence, architecture, state machine, or set of relationships), you may include one as a Mermaid code block (```mermaid). It is drawn for the user. Keep diagrams small and focused, and still explain in text. Use valid Mermaid 11 syntax: put node labels that contain spaces, punctuation, or parentheses in double quotes (for example A["f(x) = 2x"]), and don't put HTML or Markdown inside labels. For math in a diagram, wrap it in double dollar signs inside a quoted label, for example A["$$\\frac{1}{2}mv^2$$"]; this works only in flowcharts and sequence diagrams, and single dollar signs aren't rendered as math.

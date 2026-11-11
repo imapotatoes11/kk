@@ -317,7 +317,7 @@ final class ChatController: ObservableObject {
             appendingImage: image,
             additionalImages: image == nil ? [] : additionalScreenData,
             appendingAttachments: attachments,
-            systemPrompt: KKCopy.systemPrompt(diagrams: preferences.renderDiagrams)
+            systemPrompt: KKCopy.systemPrompt(diagrams: preferences.renderDiagrams, customInstructions: preferences.customInstructions)
         )
         let request = ChatCompletionRequest(model: configuration.model, messages: requestMessages, stream: true)
 
@@ -538,7 +538,7 @@ final class ChatController: ObservableObject {
                         var answer = ChatMessage(id: original[answerIndex].id, role: .assistant, content: "")
                         answer.isComplete = false
                         answer.generationStartedAt = .now
-                        let request = ChatCompletionRequest(model: configuration.model, messages: ChatRequestBuilder.messages(for: Array(revised[...userIndex]), firstImage: nil, systemPrompt: KKCopy.systemPrompt(diagrams: self.preferences.renderDiagrams)), stream: true)
+                        let request = ChatCompletionRequest(model: configuration.model, messages: ChatRequestBuilder.messages(for: Array(revised[...userIndex]), firstImage: nil, systemPrompt: KKCopy.systemPrompt(diagrams: self.preferences.renderDiagrams, customInstructions: self.preferences.customInstructions)), stream: true)
                         for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
                             try Task.checkCancellation()
                             guard self.revisionID == id else { return }

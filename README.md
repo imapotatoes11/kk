@@ -52,8 +52,9 @@ Requires **macOS 15 or later**. Prebuilt downloads are for **Apple Silicon (arm6
 
 ## Get started
 
-1. Open **Settings → Connection** from the menu bar or popup gear.
+1. Open **Settings → Inference** from the menu bar or popup gear.
 2. Enter your API base URL, model ID, and API key. Use a vision-capable model for screen questions; keys are optional for endpoints that don't require authentication.
+   Optionally add **Custom instructions** (up to 4,000 characters), which kk appends to its system prompt for every question.
 3. Grant **Screen Recording** access when you want screen context. Text-only questions work without it.
 4. Press **⌘⌥K**, optionally annotate the screen or paste or drop files, type a question, and press **Return**.
 5. Ask a follow-up in the same popup. Each turn can attach its own screen image; earlier questions, answers, and attached images remain part of the conversation.

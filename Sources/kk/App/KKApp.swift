@@ -122,7 +122,11 @@ final class AppState: ObservableObject {
             self?.annotations.end()
             self?.panelController.moveToBlankSpace()
         }
-        chat.onPrepareFollowUp = { [weak self] in self?.prepareFollowUp() }
+        chat.onPrepareFollowUp = { [weak self] in
+            // Runs when an answer finishes or is stopped. The user may have moved on to another app.
+            guard let self else { return }
+            self.prepareFollowUp(focusPopup: self.preferences.focusOnAnswerComplete)
+        }
         chat.onPickFiles = { [weak self] in self?.presentAttachmentPicker() }
         chat.onAnnotate = { [weak self] in
             guard let self else { return }
@@ -302,11 +306,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func prepareFollowUp() {
+    private func prepareFollowUp(focusPopup: Bool = true) {
         guard panelController.isVisible, !permissionSetupActive else { return }
         captureScreens = DisplayResolver.captureScreens(mode: preferences.captureDisplayMode)
         guard let screen = captureScreens.first else { return }
         annotations.begin(on: screen)
+        annotations.focusesPopupOnCapture = focusPopup
         if settingsWindow?.isKeyWindow == true { annotations.suspend() }
         chat.beginCapture(for: screen, additionalScreens: Array(captureScreens.dropFirst()))
     }

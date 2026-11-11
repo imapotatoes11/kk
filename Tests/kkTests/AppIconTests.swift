@@ -18,6 +18,39 @@ final class AppIconTests: XCTestCase {
     }
 
     @MainActor
+    func testIconsKeepTheStandardMacOSMarginSoTheDockSizeMatches() throws {
+        for style in AppIconStyle.allCases {
+            let image = try XCTUnwrap(style.image)
+            let rep = try XCTUnwrap(image.representations.first as? NSBitmapImageRep)
+            XCTAssertEqual(rep.pixelsWide, 1024)
+            XCTAssertEqual(rep.pixelsHigh, 1024)
+            // System icons draw an 824 px shape centred in 1024 px, leaving 100 px of transparency.
+            for (x, y) in [(512, 90), (512, 933), (90, 512), (933, 512)] {
+                XCTAssertEqual(try XCTUnwrap(rep.colorAt(x: x, y: y)).alphaComponent, 0, accuracy: 0.01, "\(style) margin at \(x),\(y)")
+            }
+            for (x, y) in [(512, 110), (512, 913), (110, 512), (913, 512)] {
+                XCTAssertGreaterThan(try XCTUnwrap(rep.colorAt(x: x, y: y)).alphaComponent, 0.9, "\(style) shape edge at \(x),\(y)")
+            }
+        }
+    }
+
+    @MainActor
+    func testPermissionDragUsesTheChosenIconForKKOnly() throws {
+        _ = NSApplication.shared
+        for style in AppIconStyle.allCases {
+            let expected = try XCTUnwrap(style.image?.tiffRepresentation)
+            XCTAssertEqual(PreparedDragApp.icon(for: Bundle.main.bundleURL, style: style).tiffRepresentation, expected,
+                "The drag helper shows the \(style) icon, not Finder's cached one")
+        }
+        let other = URL(fileURLWithPath: "/System/Applications/Calculator.app")
+        XCTAssertNotEqual(PreparedDragApp.icon(for: other, style: .dark).tiffRepresentation, AppIconStyle.dark.image?.tiffRepresentation)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        XCTAssertEqual(AppIconStyle.saved(in: defaults), .dark)
+        Preferences(defaults: defaults).iconStyle = .light
+        XCTAssertEqual(AppIconStyle.saved(in: defaults), .light)
+    }
+
+    @MainActor
     func testIconUpdatesRunningAppAndAboutInBothWindowAppearances() async throws {
         let app = NSApplication.shared
         let originalIcon = app.applicationIconImage

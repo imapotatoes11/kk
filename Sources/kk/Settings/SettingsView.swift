@@ -2,11 +2,11 @@ import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable {
-    case general, connection, annotations, shortcuts, advanced, about
+    case general, inference, annotations, shortcuts, advanced, about
 
     var title: String {
         switch self {
-        case .connection: "Connection"
+        case .inference: "Inference"
         case .general: "General"
         case .annotations: "Annotations"
         case .shortcuts: "Shortcuts"
@@ -17,7 +17,7 @@ enum SettingsSection: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .connection: "network"
+        case .inference: "cpu"
         case .general: "slider.horizontal.3"
         case .annotations: "pencil.tip.crop.circle"
         case .shortcuts: "keyboard"
@@ -44,7 +44,7 @@ struct SettingsView: View {
     var body: some View {
         Group {
             switch selection.section {
-            case .connection: connection
+            case .inference: inference
             case .general: CustomizationView(preferences: preferences)
             case .annotations: AnnotationsSettingsView(preferences: preferences)
             case .shortcuts: shortcuts
@@ -59,20 +59,13 @@ struct SettingsView: View {
         .onAppear { hasSavedKey = appState.keychain.loadAPIKey()?.isEmpty == false }
     }
 
-    private var connection: some View {
+    private var inference: some View {
         Form {
             Section {
                 TextField("Base URL", text: $preferences.baseURL, prompt: Text("https://api.openai.com/v1"))
                     .autocorrectionDisabled()
                 TextField("Model", text: $preferences.model, prompt: Text("Model ID"))
                     .autocorrectionDisabled()
-            } header: {
-                Text("OpenAI-compatible API")
-            } footer: {
-                Text("Use a vision-capable model to ask about your screen or attached images. Changes save automatically.")
-            }
-
-            Section {
                 SecureField("API key", text: $apiKey, prompt: Text(hasSavedKey ? "Saved in Keychain" : "Optional for local endpoints"))
                     .onSubmit(saveKey)
                 HStack(spacing: 12) {
@@ -92,9 +85,42 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } header: {
-                Text("Authentication")
+                Text("Inference")
             } footer: {
-                Text("Keys are stored only in macOS Keychain. Enter a new key to replace the saved one.")
+                Text("Any OpenAI-compatible endpoint. Use a vision-capable model to ask about your screen or attached images. The URL and model save automatically; keys are stored only in macOS Keychain.")
+            }
+
+            Section {
+                TextEditor(text: $preferences.customInstructions)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 72, maxHeight: 140)
+                    .overlay(alignment: .topLeading) {
+                        if preferences.customInstructions.isEmpty {
+                            Text("For example: Answer in British English. Keep answers under five sentences.")
+                                .foregroundStyle(.tertiary)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .accessibilityLabel("Custom instructions")
+                    .onChange(of: preferences.customInstructions) { _, text in
+                        if text.count > KKCopy.customInstructionsLimit {
+                            preferences.customInstructions = String(text.prefix(KKCopy.customInstructionsLimit))
+                        }
+                    }
+                let count = preferences.customInstructions.count
+                let limit = KKCopy.customInstructionsLimit
+                Text("\(count.formatted()) / \(limit.formatted()) characters")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(count >= limit ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityLabel("\(count.formatted()) of \(limit.formatted()) characters used")
+            } header: {
+                Text("Custom instructions")
+            } footer: {
+                Text("Added to kk's system prompt for every question, including follow-ups. Saves automatically.")
             }
 
             Section {

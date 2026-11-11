@@ -156,6 +156,45 @@ final class BlankSpaceTests: XCTestCase {
         XCTAssertEqual(BlankSpaceFinder.expanded(start, in: busy, region: busy.bounds, minimumHeight: 220).height, 220, "Never below the minimum")
     }
 
+    func testTallAnswersGrowAboveTheQuietColumnOnceItIsFull() {
+        let area = CGRect(x: 0, y: 0, width: 1200, height: 1000)
+        let column = CGRect(x: 100, y: 400, width: 600, height: 300)
+        XCTAssertEqual(BlankSpaceFinder.fitted(column, height: 200, within: area), CGRect(x: 100, y: 500, width: 600, height: 200), "Short answers hang from the column's top")
+        XCTAssertEqual(BlankSpaceFinder.fitted(column, height: 500, within: area), CGRect(x: 100, y: 400, width: 600, height: 500), "Keeps the quiet bottom and extends upward")
+        let full = BlankSpaceFinder.fitted(column, height: 2000, within: area)
+        XCTAssertEqual(full.maxY, area.maxY - BlankSpaceFinder.margin)
+        XCTAssertEqual(full.minY, area.minY + BlankSpaceFinder.margin, "Only after the space above runs out does it extend below")
+    }
+
+    @MainActor
+    func testFollowUpsKeepAManuallyResizedPanel() async throws {
+        _ = NSApplication.shared
+        let bitmap = try image(background: 1)
+        for quiet in [false, true] {
+            let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+            prefs.placeInBlankSpace = quiet
+            let controller = PanelController(preferences: prefs, placementCapture: { _ in bitmap })
+            let screen = try XCTUnwrap(NSScreen.main)
+            controller.show(rootView: AnyView(Color.clear), on: screen)
+            defer { controller.hide() }
+            let panel = try XCTUnwrap(controller.panel)
+            try await settle(panel, placed: quiet ? controller : nil)
+            controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 300, preferredWidth: 680)
+            try await settle(panel)
+            controller.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: panel))
+            let visible = screen.visibleFrame
+            let manual = NSRect(x: visible.minX + 40, y: visible.minY + 60, width: panel.frame.width, height: 280).integral
+            panel.setFrame(manual, display: false)
+            // A follow-up: a new placement scan and a taller answer must not resize or move it.
+            controller.moveToBlankSpace()
+            controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 700, preferredWidth: 680, streaming: true)
+            try await settle(panel)
+            controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 900, preferredWidth: 680)
+            try await settle(panel)
+            XCTAssertEqual(panel.frame, manual, quiet ? "quiet placement" : "default placement")
+        }
+    }
+
     @MainActor
     func testPanelGrowsOnlyAsContentArrivesInBothPlacementModes() async throws {
         _ = NSApplication.shared

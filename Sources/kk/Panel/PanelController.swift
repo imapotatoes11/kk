@@ -109,6 +109,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Re-scan only on explicit open/send events, never on streaming tokens.
     func moveToBlankSpace() {
         cancelPlacement()
+        // A size or position the user chose by hand stays put for follow-up questions.
+        guard !hasUserResized else { return }
         guard preferences.placeInBlankSpace, let panel, panel.isVisible,
               let screen = panel.screen ?? screen else { return }
         let displayID = DisplayResolver.displayID(for: screen)
@@ -192,9 +194,11 @@ final class PanelController: NSObject, NSWindowDelegate {
             var frame = CGRect(x: adaptive.base.minX, y: adaptive.base.maxY - minHeight, width: adaptive.base.width, height: minHeight)
             if hasExpanded {
                 let available = BlankSpaceFinder.expanded(frame, in: adaptive.map, region: adaptive.region, minimumHeight: minHeight)
-                var height = min(available.height, max(minHeight, responseContentHeight ?? minHeight))
-                if responseStreaming { height = min(available.height, max(height, panel.frame.height)) }
-                frame = CGRect(x: available.minX, y: available.maxY - height, width: available.width, height: height)
+                var height = max(minHeight, responseContentHeight ?? minHeight)
+                if responseStreaming { height = max(height, panel.frame.height) }
+                let area = adaptive.region.intersection(adaptive.map.bounds)
+                frame = BlankSpaceFinder.fitted(available, height: min(height, maximumHeight),
+                    within: area.isNull ? adaptive.map.bounds : area)
             }
             setFrame(PanelPositioning.clamped(frame, in: screen.visibleFrame), animated: panel.isVisible)
             return

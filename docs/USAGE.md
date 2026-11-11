@@ -82,7 +82,7 @@ Each answer has a **Copy** action. In **Settings → Shortcuts**, optionally mak
 
 ## Appearance and placement
 
-Drag the header to move kk, and resize from an edge or corner. **Settings → General** controls compact/full opening size, width, placement at the default position or cursor, material, appearance, accent, and answer text size. **Settings → Advanced** controls snapping, always-on-top behavior, and which buttons appear beside the question field. Liquid Glass requires macOS 26; earlier systems use translucency.
+Drag the header to move kk, and resize from an edge or corner. Once you resize or move it by hand, follow-up questions keep that size and position. **Settings → General** controls compact/full opening size, width, placement at the default position or cursor, material, appearance, accent, and answer text size. **Settings → Advanced** controls snapping, always-on-top behavior, whether kk takes keyboard focus back when an answer finishes (**Focus kk when an answer finishes**, on by default), and which buttons appear beside the question field. Liquid Glass requires macOS 26; earlier systems use translucency.
 
 Enable **Move chat to largest blank space** to scan the chat’s display when it opens and whenever you send a message. kk keeps chat beside the window you were working in when you opened it, using the largest area to its left, right, above, or below; if no area beside it is big enough, kk may overlap it, but avoids doing so where it can. Within that area, kk opens at its normal width in the most visually quiet spot, including whitespace inside other apps, and tolerates faint borders and changes between flat background colors. Among quiet spots, taller usable columns take priority over shorter single-color patches. Chat grows only as the streamed text needs more height, using the quiet column as a maximum rather than filling it immediately. Sparse icons or labels at the edges don't stop the scan, and a long answer can grow beyond the usual 620-point limit when there is room. With quiet placement off, chat also grows with its content, up to its normal height limit. Answers scroll after reaching the available height. Dragging or resizing takes control until the next send. This is a visual heuristic, so review its placement on busy or changing screens.
 
@@ -104,11 +104,11 @@ Click **Grant access**, then enable kk in **System Settings → Privacy & Securi
 
 ### The API rejects a request
 
-Check the base URL, model ID, and saved key in **Settings → Connection**. kk appends `/chat/completions` unless the URL already ends with it. The endpoint must support streaming Chat Completions and image input for screen questions. An OpenAI-compatible label alone does not guarantee that every provider supports the same features.
+Check the base URL, model ID, and saved key in **Settings → Inference**. kk appends `/chat/completions` unless the URL already ends with it. The endpoint must support streaming Chat Completions and image input for screen questions. An OpenAI-compatible label alone does not guarantee that every provider supports the same features.
 
 ### Remove a saved API key
 
-Use **Settings → Connection → Clear**. This leaves other preferences intact. You can also remove just kk's Keychain entry:
+Use **Settings → Inference → Clear**. This leaves other preferences intact. You can also remove just kk's Keychain entry:
 
 ```sh
 security delete-generic-password -s dev.kw2.kk -a openai-compatible-api-key

@@ -36,7 +36,7 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(window?.contentView?.bounds.height ?? 0, 300)
         XCTAssertGreaterThanOrEqual(window?.contentView?.bounds.width ?? 0, 460)
         XCTAssertEqual(window?.toolbar?.displayMode, .iconAndLabel)
-        XCTAssertEqual(window?.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.map(\.label), ["General", "Connection", "Annotations", "Shortcuts", "Advanced", "About"])
+        XCTAssertEqual(window?.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.map(\.label), ["General", "Inference", "Annotations", "Shortcuts", "Advanced", "About"])
         window?.close()
         XCTAssertFalse(window?.isVisible == true)
         state.openSettings()

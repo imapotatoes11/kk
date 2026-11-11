@@ -321,6 +321,7 @@ struct ConversationView: View {
     @State private var bottomIsVisible = true
     @State private var isUserScrolling = false
     @State private var contentHeight: CGFloat = 0
+    @State private var jumpRequest = 0
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -376,7 +377,7 @@ struct ConversationView: View {
                 if !bottomIsVisible {
                     Button {
                         isNearBottom = true
-                        proxy.scrollTo("conversation-bottom", anchor: .bottom)
+                        jumpRequest += 1
                     } label: {
                         Label("Scroll to latest", systemImage: "chevron.down")
                             .font(.system(size: 12, weight: .medium))
@@ -391,6 +392,24 @@ struct ConversationView: View {
                     .accessibilityIdentifier("scroll-to-latest")
                     .help("Jump to the most recent message and resume automatic scrolling")
                     .padding(.bottom, 10)
+                }
+            }
+            .task(id: jumpRequest) {
+                guard jumpRequest > 0 else { return }
+                guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+                    proxy.scrollTo("conversation-bottom", anchor: .bottom)
+                    return
+                }
+                // AppKit's rubber-band bounce (after scrolling past the top) can cancel an
+                // animated scroll, so retry once, then snap. Stop if the reader scrolls away.
+                for attempt in 0..<3 {
+                    guard isNearBottom, !bottomIsVisible || attempt == 0 else { return }
+                    if attempt < 2 {
+                        withAnimation(.smooth(duration: 0.4)) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                    } else {
+                        proxy.scrollTo("conversation-bottom", anchor: .bottom)
+                    }
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
                 }
             }
             .task(id: contentHeight) {

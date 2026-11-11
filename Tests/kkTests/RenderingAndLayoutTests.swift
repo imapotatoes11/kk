@@ -99,6 +99,11 @@ final class RenderingAndLayoutTests: XCTestCase {
                 context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
             window.sendEvent(event)
         }
+        // The jump animates (and may retry after AppKit's bounce), so wait for it to arrive.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while scroll.contentView.bounds.maxY < document.bounds.height - UIConstants.scrollFollowThreshold && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
         try await settle(host)
         XCTAssertGreaterThan(scroll.contentView.bounds.minY, 100)
         XCTAssertGreaterThanOrEqual(scroll.contentView.bounds.maxY, document.bounds.height - UIConstants.scrollFollowThreshold)

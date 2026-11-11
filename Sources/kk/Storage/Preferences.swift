@@ -11,6 +11,10 @@ final class Preferences: ObservableObject {
     @Published var model: String {
         didSet { defaults.set(model, forKey: Keys.model) }
     }
+    /// Appended to the system prompt for every request.
+    @Published var customInstructions: String {
+        didSet { defaults.set(customInstructions, forKey: "customInstructions") }
+    }
 
     @Published var popupSize: PopupSize {
         didSet { defaults.set(popupSize.rawValue, forKey: Keys.popupSize) }
@@ -22,7 +26,7 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
     @Published var iconStyle: AppIconStyle {
-        didSet { defaults.set(iconStyle.rawValue, forKey: "iconStyle") }
+        didSet { defaults.set(iconStyle.rawValue, forKey: AppIconStyle.defaultsKey) }
     }
     @Published var accent: AppAccent {
         didSet { defaults.set(accent.rawValue, forKey: Keys.accent) }
@@ -99,6 +103,8 @@ final class Preferences: ObservableObject {
     @Published var wrapLaTeX: Bool { didSet { defaults.set(wrapLaTeX, forKey: "wrapLaTeX") } }
     @Published var renderDiagrams: Bool { didSet { defaults.set(renderDiagrams, forKey: "renderDiagrams") } }
     @Published var repairDiagrams: Bool { didSet { defaults.set(repairDiagrams, forKey: "repairDiagrams") } }
+    /// Bring keyboard focus back to the popup when an answer finishes streaming.
+    @Published var focusOnAnswerComplete: Bool { didSet { defaults.set(focusOnAnswerComplete, forKey: "focusOnAnswerComplete") } }
     var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
     var openingWidth: CGFloat { popupSize == .compact ? BarWidths.compact[BarWidths.clamp(compactWidthLevel)] : BarWidths.full[BarWidths.clamp(fullWidthLevel)] }
     private let defaults: UserDefaults
@@ -112,6 +118,8 @@ final class Preferences: ObservableObject {
         wrapLaTeX = defaults.bool(forKey: "wrapLaTeX")
         renderDiagrams = defaults.object(forKey: "renderDiagrams") as? Bool ?? true
         repairDiagrams = defaults.object(forKey: "repairDiagrams") as? Bool ?? true
+        focusOnAnswerComplete = defaults.object(forKey: "focusOnAnswerComplete") as? Bool ?? true
+        customInstructions = String((defaults.string(forKey: "customInstructions") ?? "").prefix(KKCopy.customInstructionsLimit))
         let pageImages = defaults.object(forKey: "pdfPageImageLimit") as? Int ?? AttachmentLimits.defaultPageImages
         pdfPageImageLimit = AttachmentLimits.pageImageOptions.contains(pageImages) ? pageImages : AttachmentLimits.defaultPageImages
         compactWidthLevel = BarWidths.clamp(defaults.object(forKey: "compactWidthLevel") as? Int ?? BarWidths.compactDefault)
@@ -155,7 +163,7 @@ final class Preferences: ObservableObject {
         popupSize = PopupSize(rawValue: defaults.string(forKey: Keys.popupSize) ?? "") ?? .fullSize
         popupMaterial = PopupMaterial(rawValue: defaults.string(forKey: Keys.popupMaterial) ?? "") ?? .opaque
         appearance = AppAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
-        iconStyle = AppIconStyle(rawValue: defaults.string(forKey: "iconStyle") ?? "") ?? .dark
+        iconStyle = AppIconStyle.saved(in: defaults)
         accent = AppAccent(rawValue: defaults.string(forKey: Keys.accent) ?? "") ?? .system
         alwaysOnTop = defaults.object(forKey: Keys.alwaysOnTop) as? Bool ?? true
         answerTextSize = AnswerTextSize(rawValue: defaults.string(forKey: Keys.answerTextSize) ?? "") ?? .standard
@@ -166,7 +174,7 @@ final class Preferences: ObservableObject {
         placeInBlankSpace = defaults.bool(forKey: "placeInBlankSpace")
     }
 
-    /// Restores General and Advanced settings. The connection and shortcuts are unchanged.
+    /// Restores General and Advanced settings. Inference settings and shortcuts are unchanged.
     func resetCustomization() {
         resetGeneral()
         resetAdvanced()
@@ -200,6 +208,7 @@ final class Preferences: ObservableObject {
         pdfPageImageLimit = AttachmentLimits.defaultPageImages
         renderDiagrams = true
         repairDiagrams = true
+        focusOnAnswerComplete = true
     }
 
     private enum Keys {

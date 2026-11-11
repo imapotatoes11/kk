@@ -208,7 +208,7 @@ final class InteractionPolishTests: XCTestCase {
         defer { window.close() }
         window.orderFront(nil)
         XCTAssertEqual(controller.selection.section, .general)
-        XCTAssertEqual(window.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.prefix(2).map(\.label), ["General", "Connection"])
+        XCTAssertEqual(window.toolbar?.items.filter { $0.itemIdentifier != .flexibleSpace }.prefix(2).map(\.label), ["General", "Inference"])
         try await settle(try XCTUnwrap(window.contentView))
         window.setContentSize(NSSize(width: 640, height: 1120))
         try await settle(try XCTUnwrap(window.contentView))
