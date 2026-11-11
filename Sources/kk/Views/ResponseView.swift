@@ -10,7 +10,9 @@ struct ResponseView: View {
     var textSize: CGFloat = 14
 
     private var renderedMarkdown: String {
-        wrapLaTeX ? LaTeXWrapping.markdown(markdown, width: availableWidth, fontSize: textSize + 2) : markdown
+        // Rewrite LaTeX SwiftMath can't parse, and show math that still fails as its source.
+        let compatible = MathMarkdown.renderable(markdown)
+        return wrapLaTeX ? LaTeXWrapping.markdown(compatible, width: availableWidth, fontSize: textSize + 2) : compatible
     }
 
     var body: some View {

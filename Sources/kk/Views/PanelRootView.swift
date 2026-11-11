@@ -68,6 +68,8 @@ struct PanelRootView: View {
         .accentColor(preferences.accent.color)
         .popover(isPresented: $chat.isPreviewPresented, arrowEdge: .bottom) { ScreenPreviewView(chat: chat) }
         .environment(\.kkMermaidRepairs, chat.diagramRepairs)
+        .environment(\.kkMathRepairs, chat.equationRepairs)
+        .environment(\.kkRepairEquation, { [weak chat] source in chat?.repairEquation(source) })
         .environment(\.kkRenderDiagrams, preferences.renderDiagrams)
         .environment(\.kkWrapLaTeX, preferences.wrapLaTeX)
         .environment(\.kkDiagramAccent, preferences.accent.nsColor)

@@ -44,6 +44,10 @@ final class ChatController: ObservableObject {
     /// Returns the Mermaid parser's error, or nil for a valid diagram. Replaceable in tests.
     var validateDiagram: @MainActor (String) async -> String? = { await MermaidRenderer.shared.validate($0) }
     private var diagramTasks: [UUID: Task<Void, Never>] = [:]
+    let equationRepairs = MathRepairStore()
+    private var equationTasks: [UUID: Task<Void, Never>] = [:]
+    /// Equations sent in one repair request; more are left to the Fix button.
+    static let equationRepairLimit = 12
     private var currentPreparationTask: Task<Void, Never>?
     private var activePreparationID = UUID()
 
@@ -125,6 +129,9 @@ final class ChatController: ObservableObject {
         diagramTasks.values.forEach { $0.cancel() }
         diagramTasks = [:]
         diagramRepairs.reset()
+        equationTasks.values.forEach { $0.cancel() }
+        equationTasks = [:]
+        equationRepairs.reset()
         pendingAttachments = []
         isDropTargeted = false
         attachmentNotice = nil
@@ -363,7 +370,7 @@ final class ChatController: ObservableObject {
                 if let index = self.messages.firstIndex(where: { $0.id == assistantID }) { self.messages[index].isComplete = true }
                 self.generationState = .completed
                 self.currentGenerationTask = nil
-                self.checkDiagrams(in: assistantID)
+                self.checkAnswer(assistantID)
             } catch is CancellationError {
                 guard let self else { return }
                 guard self.activeGenerationID == generationID else { return }
@@ -394,12 +401,12 @@ final class ChatController: ObservableObject {
             revisionNotice = "Revision cancelled. The original conversation was kept."
             failedRevision = nil
             generationState = .completed
-            for message in messages where message.role == .assistant { checkDiagrams(in: message.id) }
+            for message in messages where message.role == .assistant { checkAnswer(message.id) }
             return
         }
         guard isStreaming else { return }
         let stoppedID = messages.last(where: { $0.role == .assistant })?.id
-        defer { if let stoppedID { checkDiagrams(in: stoppedID) } }
+        defer { if let stoppedID { checkAnswer(stoppedID) } }
         finishThinking()
         activeGenerationID = UUID()
         currentGenerationTask?.cancel()
@@ -420,6 +427,7 @@ final class ChatController: ObservableObject {
         activeCaptureID = UUID()
         if let lastIndex = messages.lastIndex(where: { $0.role == .assistant }) {
             diagramTasks.removeValue(forKey: messages[lastIndex].id)?.cancel()
+            equationTasks.removeValue(forKey: messages[lastIndex].id)?.cancel()
             messages.remove(at: lastIndex)
         }
         if messages.last?.role == .user { messages.removeLast() }
@@ -495,8 +503,12 @@ final class ChatController: ObservableObject {
         let original = messages
         // Pause diagram repair before taking over these messages. A late repair must not
         // overwrite a revision or mutate the source branch during the transaction.
-        for message in original { diagramTasks.removeValue(forKey: message.id)?.cancel() }
+        for message in original {
+            diagramTasks.removeValue(forKey: message.id)?.cancel()
+            equationTasks.removeValue(forKey: message.id)?.cancel()
+        }
         diagramRepairs.reset()
+        equationRepairs.reset()
         cancelEditing()
         failedRevision = nil
         let id = UUID()
@@ -567,7 +579,7 @@ final class ChatController: ObservableObject {
                 self.revisionProgress = nil
                 self.revisionTask = nil
                 self.generationState = .completed
-                for message in revised where message.role == .assistant { self.checkDiagrams(in: message.id) }
+                for message in revised where message.role == .assistant { self.checkAnswer(message.id) }
             } catch {
                 guard self.revisionID == id, !Task.isCancelled else { return }
                 self.revisionPreview = nil
@@ -576,9 +588,15 @@ final class ChatController: ObservableObject {
                 self.failedRevision = operation
                 self.revisionNotice = "Revision failed. The original conversation was kept."
                 self.generationState = .error((error as? KKError) ?? .streamFailed("Revision failed. The original conversation was kept. \(error.localizedDescription)"))
-                for message in self.messages where message.role == .assistant { self.checkDiagrams(in: message.id) }
+                for message in self.messages where message.role == .assistant { self.checkAnswer(message.id) }
             }
         }
+    }
+
+    /// Checks a finished answer's diagrams and equations, repairing what can't render.
+    func checkAnswer(_ messageID: UUID) {
+        checkDiagrams(in: messageID)
+        checkEquations(in: messageID)
     }
 
     // MARK: - Diagrams
@@ -650,6 +668,99 @@ final class ChatController: ObservableObject {
     private func replaceDiagram(_ original: String, with fixed: String, in messageID: UUID) -> Bool {
         guard let index = messages.firstIndex(where: { $0.id == messageID }),
               let updated = MermaidExtractor.replacing(original, with: fixed, in: messages[index].content) else { return false }
+        messages[index].content = updated
+        return true
+    }
+
+    // MARK: - Equations
+
+    /// Checks the finished answer's math. Equations that still can't render after compatibility
+    /// fixes get one hidden repair request together; a valid fix replaces the equation in the
+    /// message, so copies and follow-up requests use it too.
+    func checkEquations(in messageID: UUID) {
+        guard preferences.repairMath, equationTasks[messageID] == nil,
+              let index = messages.firstIndex(where: { $0.id == messageID }), messages[index].role == .assistant else { return }
+        let failures = MathMarkdown.failures(in: messages[index].content).filter { equationRepairs.status(for: $0.source) == nil }
+        guard !failures.isEmpty else { return }
+        repairEquations(failures, in: messageID)
+    }
+
+    /// Fixes one equation on request, such as from its Fix button. Works with automatic
+    /// repair off, since the user asked for it.
+    func repairEquation(_ source: String) {
+        guard !isStreaming, !isRevising else { return }
+        for message in messages.reversed() where message.role == .assistant && equationTasks[message.id] == nil {
+            let matching = MathMarkdown.failures(in: message.content).filter { MathMarkdown.key($0.source) == MathMarkdown.key(source) }
+            if !matching.isEmpty {
+                repairEquations(matching, in: message.id)
+                return
+            }
+        }
+    }
+
+    private func repairEquations(_ failures: [MathMarkdown.Failure], in messageID: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        let batch = Array(failures.prefix(Self.equationRepairLimit))
+        // Mark equations first, so their views show progress immediately.
+        batch.forEach { equationRepairs.set($0.source, .repairing) }
+        let question = messages[..<index].last(where: { $0.role == .user })?.content ?? ""
+        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        equationTasks[messageID] = Task { [weak self] in
+            guard let self else { return }
+            let fixes = await self.requestEquationRepairs(batch, question: question, configuration: configuration)
+            guard !Task.isCancelled else {
+                for failure in batch where self.equationRepairs.status(for: failure.source) == .repairing {
+                    self.equationRepairs.set(failure.source, nil)
+                }
+                return
+            }
+            for (failure, fix) in zip(batch, fixes) {
+                if let fix, MathMarkdown.renders(fix, display: failure.display),
+                   self.replaceEquation(failure.source, with: fix, in: messageID) {
+                    self.equationRepairs.set(failure.source, nil)
+                } else {
+                    self.equationRepairs.set(failure.source, .failed(failure.error))
+                }
+            }
+            self.equationTasks[messageID] = nil
+        }
+    }
+
+    /// One request for all the equations. Returns a fix per equation, in order, or nil where
+    /// the reply has none.
+    private func requestEquationRepairs(_ failures: [MathMarkdown.Failure], question: String, configuration: APIConfiguration) async -> [String?] {
+        var prompt = failures.count == 1
+            ? "This LaTeX math fails to render."
+            : "These \(failures.count) LaTeX math expressions fail to render. Fix each one."
+        for (number, failure) in failures.enumerated() {
+            prompt += "\n\n\(number + 1). \(failure.display ? "Display" : "Inline") math. Renderer error: \(failure.error.prefix(300))\n```latex\n\(failure.body.prefix(4_000))\n```"
+        }
+        let context = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !context.isEmpty { prompt += "\n\nThe math is part of an answer to this question: \(context.prefix(600))" }
+        let request = ChatCompletionRequest(model: configuration.model, messages: [
+            APIMessage(role: "system", content: .text(KKCopy.mathRepairPrompt)),
+            APIMessage(role: "user", content: .text(prompt))
+        ], stream: true)
+        var reply = ""
+        do {
+            for try await delta in apiClient.streamCompletion(request: request, configuration: configuration) {
+                if case .content(let text) = delta { reply += text }
+            }
+        } catch {
+            return failures.map { _ in nil }
+        }
+        let blocks = MermaidExtractor.fencedBlocks(in: reply).map { MathMarkdown.strippingDelimiters($0.code) }
+        if blocks.count == failures.count { return blocks.map { $0.isEmpty ? nil : $0 } }
+        if failures.count == 1 {
+            let bare = MathMarkdown.strippingDelimiters(blocks.first ?? reply)
+            return [bare.isEmpty ? nil : bare]
+        }
+        return failures.map { _ in nil }
+    }
+
+    private func replaceEquation(_ source: String, with fix: String, in messageID: UUID) -> Bool {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }),
+              let updated = MathMarkdown.replacing(source, withBody: fix, in: messages[index].content) else { return false }
         messages[index].content = updated
         return true
     }

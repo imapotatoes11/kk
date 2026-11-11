@@ -103,6 +103,7 @@ final class Preferences: ObservableObject {
     @Published var wrapLaTeX: Bool { didSet { defaults.set(wrapLaTeX, forKey: "wrapLaTeX") } }
     @Published var renderDiagrams: Bool { didSet { defaults.set(renderDiagrams, forKey: "renderDiagrams") } }
     @Published var repairDiagrams: Bool { didSet { defaults.set(repairDiagrams, forKey: "repairDiagrams") } }
+    @Published var repairMath: Bool { didSet { defaults.set(repairMath, forKey: "repairMath") } }
     /// Bring keyboard focus back to the popup when an answer finishes streaming.
     @Published var focusOnAnswerComplete: Bool { didSet { defaults.set(focusOnAnswerComplete, forKey: "focusOnAnswerComplete") } }
     var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
@@ -118,6 +119,7 @@ final class Preferences: ObservableObject {
         wrapLaTeX = defaults.bool(forKey: "wrapLaTeX")
         renderDiagrams = defaults.object(forKey: "renderDiagrams") as? Bool ?? true
         repairDiagrams = defaults.object(forKey: "repairDiagrams") as? Bool ?? true
+        repairMath = defaults.object(forKey: "repairMath") as? Bool ?? true
         focusOnAnswerComplete = defaults.object(forKey: "focusOnAnswerComplete") as? Bool ?? true
         customInstructions = String((defaults.string(forKey: "customInstructions") ?? "").prefix(KKCopy.customInstructionsLimit))
         let pageImages = defaults.object(forKey: "pdfPageImageLimit") as? Int ?? AttachmentLimits.defaultPageImages
@@ -208,6 +210,7 @@ final class Preferences: ObservableObject {
         pdfPageImageLimit = AttachmentLimits.defaultPageImages
         renderDiagrams = true
         repairDiagrams = true
+        repairMath = true
         focusOnAnswerComplete = true
     }
 

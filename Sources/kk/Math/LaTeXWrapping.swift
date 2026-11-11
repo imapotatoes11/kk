@@ -19,7 +19,7 @@ enum LaTeXWrapping {
         guard width > 40 else { return source }
         var error: NSError?
         guard let list = MTMathListBuilder.build(fromString: source, error: &error), error == nil,
-              !list.atoms.contains(where: { $0.type == .table }) else { return source }
+              !list.atoms.contains(where: { $0.type == .table }), !containsColor(list) else { return source }
         let label = MTMathUILabel()
         label.fontSize = fontSize
         label.labelMode = .display
@@ -60,6 +60,24 @@ enum LaTeXWrapping {
         // Unsupported combinations fall back to the existing horizontal math scroller.
         guard MTMathListBuilder.build(fromString: wrapped, error: &error) != nil, error == nil else { return source }
         return wrapped
+    }
+
+    /// SwiftMath can't write colored atoms back to LaTeX, so colored equations aren't reflowed.
+    private static func containsColor(_ list: MTMathList?) -> Bool {
+        guard let list else { return false }
+        return list.atoms.contains { atom in
+            if [.color, .textcolor, .colorBox].contains(atom.type) { return true }
+            if containsColor(atom.superScript) || containsColor(atom.subScript) { return true }
+            switch atom {
+            case let fraction as MTFraction: return containsColor(fraction.numerator) || containsColor(fraction.denominator)
+            case let radical as MTRadical: return containsColor(radical.radicand) || containsColor(radical.degree)
+            case let inner as MTInner: return containsColor(inner.innerList)
+            case let line as MTOverLine: return containsColor(line.innerList)
+            case let line as MTUnderLine: return containsColor(line.innerList)
+            case let accent as MTAccent: return containsColor(accent.innerList)
+            default: return false
+            }
+        }
     }
 
     @MainActor

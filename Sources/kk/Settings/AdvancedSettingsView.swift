@@ -20,10 +20,11 @@ struct AdvancedSettingsView: View {
 
             Section {
                 Toggle("Wrap long LaTeX equations", isOn: $preferences.wrapLaTeX)
+                Toggle("Fix equations that don't render", isOn: $preferences.repairMath)
             } header: {
                 Text("Math")
             } footer: {
-                Text("Break long display equations at operators to fit the chat width. Fractions, matrices, and other expressions that cannot be split safely still scroll horizontally. Copied equations stay unchanged.")
+                Text("Wrapping breaks long display equations at operators to fit the chat width; fractions, matrices, and other expressions that can't be split safely still scroll horizontally. kk converts common LaTeX its renderer lacks, like \\pmod and \\operatorname, on your Mac. If an equation still can't be drawn, kk shows its source and asks your model once for a corrected version after the answer finishes; this sends the equation and error to your endpoint. Copied equations stay as written unless they were fixed.")
             }
 
             Section {

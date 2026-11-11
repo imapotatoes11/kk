@@ -14,10 +14,13 @@ private struct KKCodeBlock: View {
     let configuration: MarkdownCodeBlockStyleConfiguration
     @Environment(\.kkRenderDiagrams) private var renderDiagrams
     @Environment(\.kkMermaidRepairs) private var repairs
+    @Environment(\.kkMathRepairs) private var mathRepairs
 
     var body: some View {
         if renderDiagrams, configuration.language?.lowercased() == "mermaid" {
             MermaidBlockView(configuration: configuration, store: repairs ?? .empty)
+        } else if configuration.language == MathMarkdown.failureLanguage {
+            MathFailureView(configuration: configuration, store: mathRepairs ?? .empty)
         } else {
             DefaultCodeBlockStyle().makeBody(configuration: configuration)
         }
