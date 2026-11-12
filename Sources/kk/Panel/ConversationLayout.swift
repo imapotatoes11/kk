@@ -8,8 +8,8 @@ enum ConversationLayout {
         }.max() ?? 0
     }
 
-    static func preferredWidth(messages: [ChatMessage], minimum: CGFloat, textSize: CGFloat) -> CGFloat {
-        let maximum = max(UIConstants.panelWidth, minimum)
+    static func preferredWidth(messages: [ChatMessage], minimum: CGFloat, textSize: CGFloat, maximum: CGFloat? = nil) -> CGFloat {
+        let maximum = maximum ?? max(UIConstants.panelWidth, minimum)
         let natural = messages.map { textWidth($0.content, fontSize: textSize) + 100 }.max() ?? minimum
         return min(maximum, max(minimum, ceil(natural / 40) * 40))
     }

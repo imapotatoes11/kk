@@ -10,6 +10,43 @@ enum PanelPositioning {
     static let snapDistance: CGFloat = 12
     static let snapReleaseDistance: CGFloat = 20
 
+    /// Preferred automatic layout area. The annotation palette always retains its own strip.
+    static func automaticBounds(in visible: NSRect, palette: PalettePosition?, paletteWidth: CGFloat = 680, contentSize: NSSize? = nil) -> NSRect {
+        var area = visible.insetBy(dx: 8, dy: 8)
+        switch palette {
+        case .top: area.size.height -= 56 + 24 + 4
+        case .bottom, .popup:
+            let reserve: CGFloat = palette == .popup ? 76 : 84
+            area.origin.y += reserve
+            area.size.height -= reserve
+        case .left:
+            let reserve = min(paletteWidth, (visible.width - 64) / 2) + 28
+            area.origin.x += reserve
+            area.size.width -= reserve
+        case .right: area.size.width -= min(paletteWidth, (visible.width - 64) / 2) + 28
+        case nil: break
+        }
+        // Spend the edge padding only when those few points let all content fit.
+        if let contentSize {
+            if contentSize.width > area.width && contentSize.width <= area.width + 16 {
+                area.origin.x -= 8
+                area.size.width += 16
+            }
+            if contentSize.height > area.height && contentSize.height <= area.height + 16 {
+                area.origin.y -= 8
+                area.size.height += 16
+            }
+        }
+        return area
+    }
+
+    static func fitted(_ frame: NSRect, size: NSSize, in bounds: NSRect) -> NSRect {
+        let size = NSSize(width: min(size.width, bounds.width), height: min(size.height, bounds.height))
+        return NSRect(x: min(max(frame.midX - size.width / 2, bounds.minX), bounds.maxX - size.width),
+                      y: min(max(frame.midY - size.height / 2, bounds.minY), bounds.maxY - size.height),
+                      width: size.width, height: size.height)
+    }
+
     static func initialFrame(on screen: NSScreen, contentHeight: CGFloat = 200, contentWidth: CGFloat = UIConstants.panelWidth, position: PopupOpeningPosition = .defaultPosition, cursor: NSPoint = .zero) -> NSRect {
         initialFrame(in: screen.visibleFrame, contentHeight: contentHeight, contentWidth: contentWidth, position: position, cursor: cursor)
     }

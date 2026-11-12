@@ -10,6 +10,13 @@ final class KKPanel: NSPanel {
         if let promptEditor, promptEditor.isEditable { makeFirstResponder(promptEditor) }
     }
 
+    var onExpandShortcut: ((NSEvent) -> Bool)?
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, onExpandShortcut?(event) == true { return }
+        super.sendEvent(event)
+    }
+
     var onEscape: (() -> Void)?
     var onCopyShortcut: (() -> Bool)?
     var onBeginDrag: (() -> Void)?

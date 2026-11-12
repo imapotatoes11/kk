@@ -89,6 +89,7 @@ struct PanelRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in chat.resumeCaptureIfPermitted() }
         .onChange(of: chat.isStreaming) { _, _ in resizePanel() }
+        .onChange(of: chat.prompt) { _, _ in resizePanel() }
         .onChange(of: chat.messages) { _, _ in resizePanel() }
         .onChange(of: preferences.popupSize) { _, _ in resizePanel() }
         .onChange(of: preferences.openingWidth) { _, _ in resizePanel() }
@@ -270,8 +271,8 @@ struct PanelRootView: View {
     private func resizePanel() {
         let minimum = compactOpening ? compactHeight : (chat.hasSubmitted ? max(220, 45 + footerHeight + 64) : 45 + footerHeight)
         panelController.updateLayout(hasResponse: chat.hasSubmitted, minimumHeight: minimum,
-            contentHeight: chat.hasSubmitted ? ConversationLayout.height(content: conversationHeight, chrome: 46 + footerHeight, minimum: minimum, streaming: chat.isStreaming, maximum: preferences.placeInBlankSpace ? .greatestFiniteMagnitude : UIConstants.panelMaxHeight) : nil,
-            preferredWidth: chat.hasSubmitted ? ConversationLayout.preferredWidth(messages: chat.messages, minimum: preferences.openingWidth, textSize: preferences.answerTextSize.points) : nil,
+            contentHeight: chat.hasSubmitted ? ConversationLayout.height(content: conversationHeight, chrome: 46 + footerHeight, minimum: minimum, streaming: chat.isStreaming, maximum: .greatestFiniteMagnitude) : nil,
+            preferredWidth: max(ConversationLayout.textWidth(chat.prompt, fontSize: preferences.answerTextSize.points) + 100, ConversationLayout.preferredWidth(messages: chat.messages, minimum: preferences.openingWidth, textSize: preferences.answerTextSize.points, maximum: .greatestFiniteMagnitude)),
             streaming: chat.isStreaming)
     }
 }

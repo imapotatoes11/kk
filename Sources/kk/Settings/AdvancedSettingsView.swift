@@ -48,13 +48,20 @@ struct AdvancedSettingsView: View {
             }
 
             Section {
+                HStack {
+                    Text("Expand chat to fit")
+                    Spacer()
+                    AnnotationShortcutRecorder(bindings: $preferences.windowBindings, action: "expand")
+                        .frame(width: 140)
+                        .help("Works in the chat window. Press Delete while recording to disable.")
+                }
                 Toggle("Keep popup above other windows", isOn: $preferences.alwaysOnTop)
                 Toggle("Snap to default position", isOn: $preferences.snapToDefaultPosition)
                 Toggle("Focus kk when an answer finishes", isOn: $preferences.focusOnAnswerComplete)
             } header: {
                 Text("Window")
             } footer: {
-                Text("Drag near the default position to snap either axis; guides appear while aligned. Turn off focusing to keep typing in another app while kk answers.")
+                Text("Assign an optional shortcut to expand the chat to fit its contents within the display. Unassigned by default. Drag near the default position to snap either axis; guides appear while aligned. Turn off focusing to keep typing in another app while kk answers.")
             }
 
             Section {

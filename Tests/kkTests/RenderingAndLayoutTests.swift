@@ -40,6 +40,16 @@ final class RenderingAndLayoutTests: XCTestCase {
         let conversation = try XCTUnwrap(descendants(of: host).compactMap { $0 as? NSScrollView }.first { !($0 is PromptScrollView) })
         XCTAssertGreaterThan(conversation.contentView.bounds.origin.y, 100, "A growing answer must follow to its bottom after window layout")
         try snapshot(host, name: "popup-long-answer")
+        controller.annotationLayerActive = true
+        controller.expandToFit()
+        try await settle(host)
+        try await settle(host)
+        let safe = PanelPositioning.automaticBounds(in: try XCTUnwrap(NSScreen.main).visibleFrame, palette: preferences.palettePosition)
+        XCTAssertLessThanOrEqual(panel.frame.maxY, safe.maxY + 1)
+        XCTAssertGreaterThanOrEqual(panel.frame.minY, safe.minY - 1)
+        let documentHeight = try XCTUnwrap(conversation.documentView).frame.height
+        XCTAssertTrue(documentHeight <= conversation.contentSize.height + 2 || panel.frame.height >= safe.height - 2,
+                      "Expand must remove vertical scrolling unless the display is full")
         // The manual width must also reflow the composer and protect its minimum height.
         panel.setContentSize(NSSize(width: 480, height: 500))
         controller.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: panel))

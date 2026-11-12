@@ -185,7 +185,7 @@ final class FollowUpTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertEqual(panel.frame.size, NSSize(width: 520, height: 300))
         XCTAssertEqual(panel.minSize.width, 480)
-        XCTAssertEqual(panel.maxSize, NSSize(width: 680, height: 620))
+        XCTAssertEqual(panel.maxSize, try XCTUnwrap(panel.screen).visibleFrame.size, "Manual resizing may use the screen, including the annotation strip")
         XCTAssertLessThan(ConversationLayout.bubbleWidth(text: "test", available: 600), 80)
         XCTAssertEqual(ConversationLayout.bubbleWidth(text: String(repeating: "long ", count: 100), available: 480), 440)
         XCTAssertEqual(ConversationLayout.height(content: 3000, chrome: 100, minimum: 220, streaming: true), 620)

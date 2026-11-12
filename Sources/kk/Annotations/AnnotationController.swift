@@ -119,7 +119,7 @@ final class AnnotationController {
         let host = NSHostingView(rootView: root)
         host.sizingOptions = []
         toolbar.contentView = host
-        let width: CGFloat = min(textPanel?.frame.width ?? 480, screen.visibleFrame.width - 32)
+        let width: CGFloat = min(textPanel?.frame.width ?? 480, paletteMaximumWidth(on: screen))
         toolbar.setFrame(preferences.palettePosition.frame(in: screen.visibleFrame, size: NSSize(width: width, height: 56), popup: textPanel?.frame), display: false)
         toolbarPanel = toolbar
         colorPicker.popup = textPanel
@@ -152,10 +152,15 @@ final class AnnotationController {
         }
     }
 
+    private func paletteMaximumWidth(on screen: NSScreen) -> CGFloat {
+        preferences.palettePosition == .left || preferences.palettePosition == .right
+            ? min(preferences.openingWidth, (screen.visibleFrame.width - 64) / 2) : screen.visibleFrame.width - 32
+    }
+
     func updatePalettePosition() {
         guard let toolbarPanel, let screen else { return }
         let targetScreen = preferences.palettePosition == .popup ? (textPanel?.screen ?? screen) : screen
-        let size = NSSize(width: min(textPanel?.frame.width ?? 480, targetScreen.visibleFrame.width - 32), height: 56)
+        let size = NSSize(width: min(textPanel?.frame.width ?? 480, paletteMaximumWidth(on: targetScreen)), height: 56)
         toolbarPanel.setFrame(preferences.palettePosition.frame(in: targetScreen.visibleFrame, size: size, popup: textPanel?.frame), display: false)
         colorPicker.updatePosition()
     }

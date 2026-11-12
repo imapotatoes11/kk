@@ -9,6 +9,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let preferences: Preferences
     private var preferenceSubscription: AnyCancellable?
     private var lastPopupSize: PopupSize
+    private(set) var expandsToFit = false
+    private var expansionAnchor: NSRect?
     private var hasExpanded = false
     private var responseContentHeight: CGFloat?
     private var responseWidth: CGFloat?
@@ -37,7 +39,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let placementCapture: @Sendable (CGDirectDisplayID?) async throws -> CGImage
     var onDismiss: (() -> Void)?
     var annotationLayerActive = false {
-        didSet { applyWindowAppearance() }
+        didSet { applyWindowAppearance(); if isVisible { applyLayout() } }
     }
     private(set) var hasUserResized = false
 
@@ -68,6 +70,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         stopFrameAnimation()
         self.screen = screen
         hasUserResized = false
+        expandsToFit = false
+        expansionAnchor = nil
         hasExpanded = false
         responseContentHeight = nil
         responseWidth = nil
@@ -115,6 +119,7 @@ final class PanelController: NSObject, NSWindowDelegate {
               let screen = panel.screen ?? screen else { return }
         let displayID = DisplayResolver.displayID(for: screen)
         let screenFrame = screen.frame, visibleFrame = screen.visibleFrame
+        let safeBounds = automaticBounds(on: screen)
         let preferred = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
         let avoided = avoidedWindowFrame
         let width = min(preferences.openingWidth, visibleFrame.width - 32)
@@ -126,7 +131,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 try Task.checkCancellation()
                 let placement = await Task.detached(priority: .userInitiated) { () -> BlankPlacement? in
                     guard let map = BlankSpaceFinder.map(from: image, screenFrame: screenFrame, visibleFrame: visibleFrame) else { return nil }
-                    let region = BlankSpaceFinder.allowedRegion(in: map.bounds, avoiding: avoided,
+                    let region = BlankSpaceFinder.allowedRegion(in: map.bounds.intersection(safeBounds), avoiding: avoided,
                         minimum: minimum)
                     // Score a typical chat height, so the spot also has room to grow after sending.
                     let probe = BlankSpaceFinder.placement(of: CGSize(width: width, height: min(region.height, 360)),
@@ -177,16 +182,49 @@ final class PanelController: NSObject, NSWindowDelegate {
         } else { applyLayout() }
     }
 
+    private func automaticBounds(on screen: NSScreen) -> NSRect {
+        PanelPositioning.automaticBounds(in: screen.visibleFrame,
+            palette: annotationLayerActive ? preferences.palettePosition : nil,
+            paletteWidth: preferences.openingWidth,
+            contentSize: NSSize(width: responseWidth ?? preferences.openingWidth, height: responseContentHeight ?? minimumContentHeight))
+    }
+
+    func expandToFit() {
+        guard let panel, panel.isVisible else { return }
+        stopFrameAnimation()
+        hasUserResized = false
+        expandsToFit = true
+        expansionAnchor = panel.frame
+        applyLayout()
+    }
+
     private func applyLayout() {
         guard !isDragging, let panel, let screen = panel.screen ?? screen else { return }
-        let openingWidth = min(preferences.openingWidth, screen.visibleFrame.width - 32)
-        let minHeight = min(max(minimumContentHeight, hasExpanded ? Self.minimumChatHeight : 0), UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
+        let bounds = automaticBounds(on: screen)
+        let openingWidth = min(preferences.openingWidth, bounds.width)
+        let minHeight = min(max(minimumContentHeight, hasExpanded ? Self.minimumChatHeight : 0), UIConstants.panelMaxHeight, bounds.height)
         let adaptive = preferences.placeInBlankSpace ? blankPlacement : nil
         let minimumWidth = preferences.placeInBlankSpace ? min(Self.minimumWidth, openingWidth) : openingWidth
         minimumSize = NSSize(width: minimumWidth, height: minHeight)
         panel.minSize = minimumSize
-        let maximumHeight = preferences.placeInBlankSpace ? screen.visibleFrame.height - 32 : min(UIConstants.panelMaxHeight, screen.visibleFrame.height - 32)
+        let maximumHeight = expandsToFit || preferences.placeInBlankSpace ? bounds.height : min(UIConstants.panelMaxHeight, bounds.height)
         panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: maximumHeight)
+        if expandsToFit {
+            guard !isAnimatingLayout else { return }
+            panel.maxSize = NSSize(width: bounds.width, height: bounds.height)
+            let size = NSSize(width: min(bounds.width, max(openingWidth, responseWidth ?? openingWidth)),
+                              height: min(bounds.height, max(minHeight, responseContentHeight ?? minHeight)))
+            let anchor = expansionAnchor ?? panel.frame
+            var frame = PanelPositioning.fitted(anchor, size: size, in: bounds)
+            if let adaptive {
+                // Keep the requested size, but score every direction across the display.
+                frame = BlankSpaceFinder.placement(of: size, in: adaptive.map, region: bounds,
+                    avoiding: avoidedWindowFrame, near: NSPoint(x: anchor.midX, y: anchor.midY))
+                frame = PanelPositioning.fitted(frame, size: size, in: bounds)
+            }
+            setFrame(frame, animated: panel.isVisible)
+            return
+        }
         if let adaptive, !hasUserResized {
             guard !isAnimatingLayout else { return }
             // Quiet space is a ceiling, not an instruction to consume it before
@@ -200,15 +238,17 @@ final class PanelController: NSObject, NSWindowDelegate {
                 frame = BlankSpaceFinder.fitted(available, height: min(height, maximumHeight),
                     within: area.isNull ? adaptive.map.bounds : area)
             }
-            setFrame(PanelPositioning.clamped(frame, in: screen.visibleFrame), animated: panel.isVisible)
+            setFrame(PanelPositioning.fitted(frame, size: frame.size, in: bounds), animated: panel.isVisible)
             return
         }
         if hasUserResized {
-            var frame = panel.frame
-            frame.size.width = min(panel.maxSize.width, max(minimumWidth, frame.width))
-            frame.size.height = min(panel.maxSize.height, max(minHeight, frame.height))
-            frame.origin.y = panel.frame.maxY - frame.height
-            setFrame(PanelPositioning.clamped(frame, to: screen), animated: false)
+            panel.maxSize = screen.visibleFrame.size
+            if panel.frame.height < minHeight {
+                var frame = panel.frame
+                frame.origin.y = frame.maxY - minHeight
+                frame.size.height = minHeight
+                setFrame(frame, animated: false)
+            }
             return
         }
         guard !isAnimatingLayout else { return }
@@ -221,12 +261,13 @@ final class PanelController: NSObject, NSWindowDelegate {
             height = max(height, panel.frame.height)
         }
         let frame = NSRect(x: panel.frame.midX - width / 2, y: panel.frame.maxY - height, width: width, height: height)
-        setFrame(PanelPositioning.clamped(frame, to: screen), animated: panel.isVisible)
+        setFrame(PanelPositioning.fitted(frame, size: frame.size, in: bounds), animated: panel.isVisible)
     }
 
     func resize(height: CGFloat, minimumHeight: CGFloat = 200, animated: Bool = true) {
         guard let panel, let screen = panel.screen ?? screen else { return }
-        let minimum = min(minimumHeight, screen.visibleFrame.height - 32)
+        let bounds = automaticBounds(on: screen)
+        let minimum = min(minimumHeight, bounds.height)
         panel.minSize.height = minimum
         minimumSize.height = minimum
         guard !hasUserResized || panel.frame.height < minimum else { return }
@@ -234,7 +275,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         var frame = panel.frame
         frame.origin.y = frame.maxY - targetHeight
         frame.size.height = targetHeight
-        setFrame(PanelPositioning.clamped(frame, to: screen), animated: animated)
+        setFrame(PanelPositioning.fitted(frame, size: frame.size, in: bounds), animated: animated)
     }
 
     /// Clamps every manual resize step to the size the current content needs. The window's own
@@ -249,6 +290,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         endDrag(restoreLayout: false)
         stopFrameAnimation()
         hasUserResized = true
+        expandsToFit = false
+        panel?.maxSize = (panel?.screen ?? screen)?.visibleFrame.size ?? NSSize(width: 10000, height: 10000)
     }
 
     func windowDidMove(_ notification: Notification) {
@@ -260,7 +303,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func beginDrag() {
-        if blankPlacement != nil { hasUserResized = true }
+        if blankPlacement != nil || expandsToFit { hasUserResized = true }
+        expandsToFit = false
         cancelPlacement()
         blankPlacement = nil
         stopFrameAnimation()
@@ -391,6 +435,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.minSize = NSSize(width: 440, height: 56)
         panel.delegate = self
         panel.hidesOnDeactivate = false
+        panel.onExpandShortcut = { [weak self] event in
+            guard let self, self.preferences.windowBindings["expand"]?.matches(event) == true else { return false }
+            self.expandToFit()
+            return true
+        }
         panel.onEscape = { [weak self] in self?.onDismiss?() }
         panel.onBeginDrag = { [weak self] in self?.beginDrag() }
         panel.onDragFrame = { [weak self] frame, cursor in self?.drag(to: frame, cursor: cursor) }

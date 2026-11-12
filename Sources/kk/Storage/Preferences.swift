@@ -108,10 +108,14 @@ final class Preferences: ObservableObject {
     @Published var focusOnAnswerComplete: Bool { didSet { defaults.set(focusOnAnswerComplete, forKey: "focusOnAnswerComplete") } }
     var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
     var openingWidth: CGFloat { popupSize == .compact ? BarWidths.compact[BarWidths.clamp(compactWidthLevel)] : BarWidths.full[BarWidths.clamp(fullWidthLevel)] }
+    @Published var windowBindings: [String: AnnotationShortcut] {
+        didSet { defaults.set(try? JSONEncoder().encode(windowBindings), forKey: "windowBindings") }
+    }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        windowBindings = defaults.data(forKey: "windowBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? [:]
         captureFlash = CaptureFlash(rawValue: defaults.string(forKey: "captureFlash") ?? "") ?? .off
         captureDisplayMode = CaptureDisplayMode(rawValue: defaults.string(forKey: "captureDisplayMode") ?? "") ?? .cursor
         showAttachButton = defaults.object(forKey: "showAttachButton") as? Bool ?? false
