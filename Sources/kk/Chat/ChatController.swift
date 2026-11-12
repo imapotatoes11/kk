@@ -254,11 +254,7 @@ final class ChatController: ObservableObject {
         guard canSend else { return }
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let configuration = APIConfiguration(
-            baseURL: preferences.baseURL,
-            apiKey: keychain.loadAPIKey() ?? "",
-            model: preferences.model
-        )
+        let configuration = preferences.inferenceConfiguration(apiKey: keychain.loadAPIKey() ?? "")
 
         do {
             _ = try configuration.validated()
@@ -420,7 +416,7 @@ final class ChatController: ObservableObject {
         if !hasSubmitted { submit(); return }
         guard let lastUser = messages.last(where: { $0.role == .user }) else { return }
         guard !isStreaming, !composerDisabled else { return }
-        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        let configuration = preferences.inferenceConfiguration(apiKey: keychain.loadAPIKey() ?? "")
         do { _ = try configuration.validated() }
         catch { generationState = .error((error as? KKError) ?? .invalidBaseURL); return }
         currentCaptureTask?.cancel()
@@ -497,7 +493,7 @@ final class ChatController: ObservableObject {
 
     private func startRevision(_ operation: ConversationRevisionRequest) {
         guard !isStreaming, !isRevising, !isPreparingScreen, let start = userIndex(forResponse: operation.responseID) else { return }
-        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        let configuration = preferences.inferenceConfiguration(apiKey: keychain.loadAPIKey() ?? "")
         do { _ = try configuration.validated() }
         catch { generationState = .error((error as? KKError) ?? .invalidBaseURL); return }
         let original = messages
@@ -617,7 +613,7 @@ final class ChatController: ObservableObject {
         codes.forEach { diagramRepairs.set($0, .checking) }
         let question = messages[..<index].last(where: { $0.role == .user })?.content ?? ""
         let repair = preferences.repairDiagrams
-        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        let configuration = preferences.inferenceConfiguration(apiKey: keychain.loadAPIKey() ?? "")
         diagramTasks[messageID] = Task { [weak self] in
             for code in codes {
                 guard let self, !Task.isCancelled else { return }
@@ -704,7 +700,7 @@ final class ChatController: ObservableObject {
         // Mark equations first, so their views show progress immediately.
         batch.forEach { equationRepairs.set($0.source, .repairing) }
         let question = messages[..<index].last(where: { $0.role == .user })?.content ?? ""
-        let configuration = APIConfiguration(baseURL: preferences.baseURL, apiKey: keychain.loadAPIKey() ?? "", model: preferences.model)
+        let configuration = preferences.inferenceConfiguration(apiKey: keychain.loadAPIKey() ?? "")
         equationTasks[messageID] = Task { [weak self] in
             guard let self else { return }
             let fixes = await self.requestEquationRepairs(batch, question: question, configuration: configuration)

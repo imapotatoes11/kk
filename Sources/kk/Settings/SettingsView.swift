@@ -91,6 +91,28 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Reasoning effort", selection: $preferences.reasoningEffort) {
+                    Text("Off (provider default)").tag("")
+                    ForEach(InferenceParameters.efforts, id: \.self) { effort in
+                        Text(effort.capitalized).tag(effort)
+                    }
+                }
+                if preferences.reasoningDisabled {
+                    HStack {
+                        Label("Disabled after this endpoint returned an error", systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Try again") { preferences.retryReasoning() }
+                    }
+                }
+            } header: {
+                Text("Reasoning")
+            } footer: {
+                Text("Optionally sends reasoning_effort. Off lets the provider decide. On the first request for each endpoint, model, and effort, an error response disables this parameter and retries once without it.")
+            }
+
+            Section {
                 TextEditor(text: $preferences.customInstructions)
                     .font(.body)
                     .scrollContentBackground(.hidden)

@@ -16,6 +16,49 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(customInstructions, forKey: "customInstructions") }
     }
 
+    @Published var reasoningEffort: String { didSet { defaults.set(reasoningEffort, forKey: "reasoningEffort") } }
+    @Published var customInferenceParameters: String { didSet { defaults.set(customInferenceParameters, forKey: "customInferenceParameters") } }
+    @Published private(set) var reasoningAttempts: [String: String]
+
+    private func reasoningKey(_ configuration: APIConfiguration) -> String {
+        [configuration.endpointURL?.absoluteString ?? configuration.baseURL,
+         configuration.model.trimmingCharacters(in: .whitespacesAndNewlines), reasoningEffort].joined(separator: "\n")
+    }
+
+    var reasoningDisabled: Bool {
+        reasoningAttempts[reasoningKey(APIConfiguration(baseURL: baseURL, apiKey: "", model: model))] == "disabled"
+    }
+
+    func retryReasoning() {
+        reasoningAttempts.removeValue(forKey: reasoningKey(APIConfiguration(baseURL: baseURL, apiKey: "", model: model)))
+        defaults.set(reasoningAttempts, forKey: "reasoningAttempts")
+    }
+
+    func inferenceConfiguration(apiKey: String) -> APIConfiguration {
+        var config = APIConfiguration(baseURL: baseURL, apiKey: apiKey, model: model)
+        config.customParameters = customInferenceParameters
+        let key = reasoningKey(config)
+        let effort = reasoningEffort
+        config.reasoningPolicy = { [weak self] in
+            await self?.beginReasoningAttempt(key: key, effort: effort) ?? .init(effort: nil, trial: false)
+        }
+        config.onReasoningFailure = { [weak self] in await self?.disableReasoning(key: key) }
+        return config
+    }
+
+    private func beginReasoningAttempt(key: String, effort: String) -> APIConfiguration.ReasoningPolicy {
+        guard !effort.isEmpty, reasoningAttempts[key] != "disabled" else { return .init(effort: nil, trial: false) }
+        let trial = reasoningAttempts[key] == nil
+        reasoningAttempts[key] = "tested"
+        defaults.set(reasoningAttempts, forKey: "reasoningAttempts")
+        return .init(effort: effort, trial: trial)
+    }
+
+    private func disableReasoning(key: String) {
+        reasoningAttempts[key] = "disabled"
+        defaults.set(reasoningAttempts, forKey: "reasoningAttempts")
+    }
+
     @Published var popupSize: PopupSize {
         didSet { defaults.set(popupSize.rawValue, forKey: Keys.popupSize) }
     }
@@ -122,6 +165,9 @@ final class Preferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        reasoningEffort = defaults.string(forKey: "reasoningEffort") ?? ""
+        customInferenceParameters = defaults.string(forKey: "customInferenceParameters") ?? "{}"
+        reasoningAttempts = defaults.dictionary(forKey: "reasoningAttempts") as? [String: String] ?? [:]
         expandWidthPercent = min(60, max(20, defaults.object(forKey: "expandWidthPercent") as? Int ?? 40))
         windowBindings = defaults.data(forKey: "windowBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? [:]
         captureFlash = CaptureFlash(rawValue: defaults.string(forKey: "captureFlash") ?? "") ?? .off
@@ -210,6 +256,7 @@ final class Preferences: ObservableObject {
     }
 
     func resetAdvanced() {
+        customInferenceParameters = "{}"
         expandWidthPercent = 40
         wrapLaTeX = false
         copyChatOnDismiss = false

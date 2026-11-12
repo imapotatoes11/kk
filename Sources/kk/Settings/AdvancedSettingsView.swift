@@ -2,9 +2,40 @@ import SwiftUI
 
 struct AdvancedSettingsView: View {
     @ObservedObject var preferences: Preferences
+    @State private var parameterDraft = "{}"
+
+    private var parameterError: String? { InferenceParameters.validationMessage(parameterDraft) }
 
     var body: some View {
         Form {
+            Section {
+                TextEditor(text: $parameterDraft)
+                    .font(.system(.body, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 112)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Custom inference parameters as JSON")
+                HStack(alignment: .top) {
+                    if let parameterError {
+                        Label(parameterError, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(parameterDraft == preferences.customInferenceParameters ? "Applied to every request" : "Unapplied changes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Apply") { preferences.customInferenceParameters = parameterDraft }
+                        .disabled(parameterError != nil || parameterDraft == preferences.customInferenceParameters)
+                }
+            } header: {
+                Text("Custom inference parameters")
+            } footer: {
+                Text("Enter a JSON object, for example {\"temperature\": 0.7, \"max_tokens\": 4096}. Supports numbers, strings, booleans, arrays, and nested objects. Sent to your endpoint with every question and repair request. Custom reasoning_effort overrides Inference, including automatic disabling. kk manages model, messages, streaming, and response format. Empty {} uses provider defaults.")
+            }
+
             Section {
                 Toggle("Send attachments without a question", isOn: $preferences.allowAttachmentOnlySend)
                 Picker("PDF page images", selection: $preferences.pdfPageImageLimit) {
@@ -57,9 +88,11 @@ struct AdvancedSettingsView: View {
                 }
                 HStack {
                     Text("Maximum expanded width")
+                        .fixedSize()
+                    Spacer(minLength: 20)
                     Slider(value: Binding(get: { Double(preferences.expandWidthPercent) },
                         set: { preferences.expandWidthPercent = Int($0.rounded()) }), in: 20...60, step: 1)
-                        .frame(width: 150)
+                        .frame(minWidth: 180, maxWidth: .infinity)
                         .accessibilityLabel("Maximum expanded width as a percentage of the screen")
                     Text("\(preferences.expandWidthPercent)%").monospacedDigit().frame(width: 40, alignment: .trailing)
                 }
@@ -87,6 +120,8 @@ struct AdvancedSettingsView: View {
                 }
             }
         }
+        .onAppear { parameterDraft = preferences.customInferenceParameters }
+        .onChange(of: preferences.customInferenceParameters) { _, value in parameterDraft = value }
         .formStyle(.grouped)
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

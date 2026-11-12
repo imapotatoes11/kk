@@ -9,6 +9,56 @@ struct OpenAICompatibleClient: Sendable {
     ) -> AsyncThrowingStream<CompletionDelta, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                var config = configuration
+                // Explicit JSON overrides remain authoritative, including null.
+                let customReasoning = (try? InferenceParameters.parse(config.customParameters))?.keys.contains("reasoning_effort") == true
+                if customReasoning {
+                    config.reasoningEffort = nil
+                    config.retryWithoutReasoning = false
+                } else if let policy = config.reasoningPolicy {
+                    let attempt = await policy()
+                    config.reasoningEffort = attempt.effort
+                    config.retryWithoutReasoning = attempt.trial
+                }
+                var emitted = false
+                do {
+                    do {
+                        for try await delta in streamOnce(request: request, configuration: config) {
+                            emitted = true
+                            continuation.yield(delta)
+                        }
+                    } catch {
+                        // Only retry server/response errors before any output. Cancellation,
+                        // transport failures and partial answers must never duplicate a request.
+                        let responseError: Bool
+                        switch error as? KKError {
+                        case .server, .unauthorized, .rateLimited, .streamFailed, .invalidResponse: responseError = true
+                        default: responseError = false
+                        }
+                        guard responseError, !Task.isCancelled, !emitted,
+                              config.retryWithoutReasoning, config.reasoningEffort != nil else { throw error }
+                        await config.onReasoningFailure?()
+                        try Task.checkCancellation()
+                        config.reasoningEffort = nil
+                        for try await delta in streamOnce(request: request, configuration: config) {
+                            continuation.yield(delta)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func streamOnce(
+        request: ChatCompletionRequest,
+        configuration: APIConfiguration
+    ) -> AsyncThrowingStream<CompletionDelta, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
                 do {
                     let validated = try configuration.validated()
                     let urlRequest = try makeURLRequest(request: request, configuration: validated)
@@ -123,7 +173,13 @@ struct OpenAICompatibleClient: Sendable {
         if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             result.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         }
-        result.httpBody = try JSONEncoder().encode(request)
+        var body = try InferenceParameters.parse(configuration.customParameters)
+        let core = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as! [String: Any]
+        body.merge(core) { _, core in core }
+        if body["reasoning_effort"] == nil, let effort = configuration.reasoningEffort {
+            body["reasoning_effort"] = effort
+        }
+        result.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return result
     }
 

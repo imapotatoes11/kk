@@ -5,6 +5,17 @@ struct APIConfiguration: Sendable {
     let apiKey: String
     let model: String
 
+    var customParameters = "{}"
+    var reasoningEffort: String? = nil
+    var retryWithoutReasoning = false
+    var reasoningPolicy: (@Sendable () async -> ReasoningPolicy)? = nil
+    var onReasoningFailure: (@Sendable () async -> Void)? = nil
+
+    struct ReasoningPolicy: Sendable {
+        let effort: String?
+        let trial: Bool
+    }
+
     var endpointURL: URL? {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
