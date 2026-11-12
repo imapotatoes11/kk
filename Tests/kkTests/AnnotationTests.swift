@@ -5,6 +5,42 @@ import XCTest
 
 final class AnnotationTests: XCTestCase {
     @MainActor
+    func testPaletteStaysVisibleAfterManualResizeAndExpandShortcut() async throws {
+        _ = NSApplication.shared
+        let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        prefs.palettePosition = .popup
+        let popup = PanelController(preferences: prefs)
+        let screen = try XCTUnwrap(NSScreen.main)
+        popup.show(rootView: AnyView(Color.clear), on: screen)
+        let controller = AnnotationController(preferences: prefs)
+        controller.textPanel = popup.panel
+        controller.onActiveChange = { popup.annotationLayerActive = $0 }
+        controller.begin(on: screen)
+        controller.receiveCapture(ScreenSnapshot(image: try Self.image(width: 400, height: 300), data: Data()))
+        defer { controller.end(); popup.hide() }
+        let panel = try XCTUnwrap(popup.panel)
+        let visible = screen.visibleFrame
+        popup.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: panel))
+        panel.setFrame(NSRect(x: visible.midX - 300, y: visible.minY + 68, width: 600, height: visible.height - 88), display: true)
+        try await Task.sleep(for: .milliseconds(100))
+        let toolbar = try XCTUnwrap(controller.toolbarPanel)
+        XCTAssertTrue(toolbar.isVisible)
+        XCTAssertFalse(toolbar.frame.intersects(panel.frame))
+        XCTAssertLessThanOrEqual(toolbar.frame.maxY, panel.frame.minY)
+        popup.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 5000, preferredWidth: 5000)
+        popup.expandToFit()
+        try await Task.sleep(for: .milliseconds(700))
+        XCTAssertFalse(toolbar.frame.intersects(panel.frame))
+        XCTAssertLessThanOrEqual(toolbar.frame.maxY, panel.frame.minY)
+        XCTAssertLessThanOrEqual(panel.frame.width, floor(screen.frame.width * 0.4))
+        popup.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: panel))
+        panel.setFrame(visible, display: true)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(toolbar.isVisible)
+        XCTAssertGreaterThan(toolbar.level.rawValue, panel.level.rawValue, "When no side fits, the palette must remain accessible above the chat")
+    }
+
+    @MainActor
     func testPreferencesPersistAndUnknownValuesFallBack() {
         let suite = "kk-annotations-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

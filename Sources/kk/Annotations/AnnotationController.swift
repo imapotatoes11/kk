@@ -122,6 +122,7 @@ final class AnnotationController {
         let width: CGFloat = min(textPanel?.frame.width ?? 480, paletteMaximumWidth(on: screen))
         toolbar.setFrame(preferences.palettePosition.frame(in: screen.visibleFrame, size: NSSize(width: width, height: 56), popup: textPanel?.frame), display: false)
         toolbarPanel = toolbar
+        updatePalettePosition()
         colorPicker.popup = textPanel
         document.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             guard let self else { return }
@@ -162,6 +163,8 @@ final class AnnotationController {
         let targetScreen = preferences.palettePosition == .popup ? (textPanel?.screen ?? screen) : screen
         let size = NSSize(width: min(textPanel?.frame.width ?? 480, paletteMaximumWidth(on: targetScreen)), height: 56)
         toolbarPanel.setFrame(preferences.palettePosition.frame(in: targetScreen.visibleFrame, size: size, popup: textPanel?.frame), display: false)
+        let overlapsChat = textPanel.map { toolbarPanel.frame.intersects($0.frame) } ?? false
+        toolbarPanel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + (overlapsChat ? 3 : 1))
         colorPicker.updatePosition()
     }
 

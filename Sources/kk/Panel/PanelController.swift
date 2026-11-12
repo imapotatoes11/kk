@@ -204,15 +204,17 @@ final class PanelController: NSObject, NSWindowDelegate {
         let openingWidth = min(preferences.openingWidth, bounds.width)
         let minHeight = min(max(minimumContentHeight, hasExpanded ? Self.minimumChatHeight : 0), UIConstants.panelMaxHeight, bounds.height)
         let adaptive = preferences.placeInBlankSpace ? blankPlacement : nil
-        let minimumWidth = preferences.placeInBlankSpace ? min(Self.minimumWidth, openingWidth) : openingWidth
+        let expansionWidth = min(bounds.width, floor(screen.frame.width * CGFloat(preferences.expandWidthPercent) / 100))
+        let minimumWidth = expandsToFit ? min(openingWidth, expansionWidth)
+            : (preferences.placeInBlankSpace ? min(Self.minimumWidth, openingWidth) : openingWidth)
         minimumSize = NSSize(width: minimumWidth, height: minHeight)
         panel.minSize = minimumSize
         let maximumHeight = expandsToFit || preferences.placeInBlankSpace ? bounds.height : min(UIConstants.panelMaxHeight, bounds.height)
         panel.maxSize = NSSize(width: min(max(UIConstants.panelWidth, openingWidth), screen.visibleFrame.width - 32), height: maximumHeight)
         if expandsToFit {
             guard !isAnimatingLayout else { return }
-            panel.maxSize = NSSize(width: bounds.width, height: bounds.height)
-            let size = NSSize(width: min(bounds.width, max(openingWidth, responseWidth ?? openingWidth)),
+            panel.maxSize = NSSize(width: expansionWidth, height: bounds.height)
+            let size = NSSize(width: min(expansionWidth, max(openingWidth, responseWidth ?? openingWidth)),
                               height: min(bounds.height, max(minHeight, responseContentHeight ?? minHeight)))
             let anchor = expansionAnchor ?? panel.frame
             var frame = PanelPositioning.fitted(anchor, size: size, in: bounds)
@@ -222,6 +224,9 @@ final class PanelController: NSObject, NSWindowDelegate {
                     avoiding: avoidedWindowFrame, near: NSPoint(x: anchor.midX, y: anchor.midY))
                 frame = PanelPositioning.fitted(frame, size: size, in: bounds)
             }
+            // Integralizing a half-point origin can otherwise add a point to the width.
+            frame.origin.x = floor(frame.minX)
+            frame.size.width = floor(frame.width)
             setFrame(frame, animated: panel.isVisible)
             return
         }

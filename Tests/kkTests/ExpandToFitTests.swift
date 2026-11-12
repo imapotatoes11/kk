@@ -26,6 +26,48 @@ final class ExpandToFitTests: XCTestCase {
             contentSize: NSSize(width: 2000, height: 2000)), padded)
     }
 
+    @MainActor
+    func testWidthPercentageDefaultsClampsPersistsAndResets() async throws {
+        _ = NSApplication.shared
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let prefs = Preferences(defaults: defaults)
+        XCTAssertEqual(prefs.expandWidthPercent, 40)
+        let controller = PanelController(preferences: prefs)
+        let screen = try XCTUnwrap(NSScreen.main)
+        controller.show(rootView: AnyView(Color.clear), on: screen)
+        defer { controller.hide() }
+        controller.updateLayout(hasResponse: true, minimumHeight: 220, contentHeight: 5000, preferredWidth: 5000)
+        for percent in [20, 40, 60] {
+            prefs.expandWidthPercent = percent
+            controller.expandToFit()
+            try await Task.sleep(for: .milliseconds(650))
+            XCTAssertLessThanOrEqual(try XCTUnwrap(controller.panel).frame.width, floor(screen.frame.width * CGFloat(percent) / 100), "Absolute cap, even below the normal minimum width")
+            XCTAssertEqual(Preferences(defaults: defaults).expandWidthPercent, percent)
+        }
+        prefs.expandWidthPercent = 100
+        XCTAssertEqual(prefs.expandWidthPercent, 60)
+        prefs.expandWidthPercent = 0
+        XCTAssertEqual(prefs.expandWidthPercent, 20)
+        defaults.set(500, forKey: "expandWidthPercent")
+        XCTAssertEqual(Preferences(defaults: defaults).expandWidthPercent, 60)
+        prefs.resetAdvanced()
+        XCTAssertEqual(prefs.expandWidthPercent, 40)
+    }
+
+    func testPaletteUsesSmallGapBelowBeforeCoveringChatHeader() {
+        let visible = NSRect(x: -1512, y: 80, width: 1512, height: 900)
+        let popup = NSRect(x: -1000, y: visible.minY + 68, width: 600, height: visible.height - 88)
+        for position in [PalettePosition.popup, .top] {
+            let palette = position.frame(in: visible, size: NSSize(width: 600, height: 56), popup: popup)
+            XCTAssertTrue(visible.contains(palette))
+            XCTAssertLessThanOrEqual(palette.maxY, popup.minY)
+            XCTAssertFalse(palette.intersects(popup))
+        }
+        let noVerticalRoom = NSRect(x: -900, y: visible.minY, width: 500, height: visible.height)
+        let palette = PalettePosition.popup.frame(in: visible, size: NSSize(width: 480, height: 56), popup: noVerticalRoom)
+        XCTAssertFalse(palette.intersects(noVerticalRoom), "Use a free side when neither above nor below fits")
+    }
+
     func testCenteredExpansionUsesBothDirectionsAndClampsAtEdges() {
         let bounds = NSRect(x: -1500, y: 90, width: 1480, height: 880)
         let original = NSRect(x: -1000, y: 400, width: 400, height: 200)
@@ -61,7 +103,7 @@ final class ExpandToFitTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(700))
         let panel = try XCTUnwrap(controller.panel)
         let bounds = PanelPositioning.automaticBounds(in: screen.visibleFrame, palette: prefs.palettePosition)
-        XCTAssertEqual(panel.frame.width, bounds.width, accuracy: 1)
+        XCTAssertEqual(panel.frame.width, floor(screen.frame.width * 0.4), accuracy: 1)
         XCTAssertEqual(panel.frame.height, bounds.height, accuracy: 1)
         controller.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: panel))
         let manual = NSRect(x: bounds.minX, y: screen.visibleFrame.maxY - 500, width: 500, height: 500)

@@ -55,6 +55,14 @@ struct AdvancedSettingsView: View {
                         .frame(width: 140)
                         .help("Works in the chat window. Press Delete while recording to disable.")
                 }
+                HStack {
+                    Text("Maximum expanded width")
+                    Slider(value: Binding(get: { Double(preferences.expandWidthPercent) },
+                        set: { preferences.expandWidthPercent = Int($0.rounded()) }), in: 20...60, step: 1)
+                        .frame(width: 150)
+                        .accessibilityLabel("Maximum expanded width as a percentage of the screen")
+                    Text("\(preferences.expandWidthPercent)%").monospacedDigit().frame(width: 40, alignment: .trailing)
+                }
                 Toggle("Keep popup above other windows", isOn: $preferences.alwaysOnTop)
                 Toggle("Snap to default position", isOn: $preferences.snapToDefaultPosition)
                 Toggle("Focus kk when an answer finishes", isOn: $preferences.focusOnAnswerComplete)

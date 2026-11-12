@@ -108,6 +108,13 @@ final class Preferences: ObservableObject {
     @Published var focusOnAnswerComplete: Bool { didSet { defaults.set(focusOnAnswerComplete, forKey: "focusOnAnswerComplete") } }
     var attachmentOptions: AttachmentLoader.Options { AttachmentLoader.Options(pdfPageImageLimit: pdfPageImageLimit) }
     var openingWidth: CGFloat { popupSize == .compact ? BarWidths.compact[BarWidths.clamp(compactWidthLevel)] : BarWidths.full[BarWidths.clamp(fullWidthLevel)] }
+    @Published var expandWidthPercent: Int {
+        didSet {
+            let clamped = min(60, max(20, expandWidthPercent))
+            if expandWidthPercent != clamped { expandWidthPercent = clamped; return }
+            defaults.set(expandWidthPercent, forKey: "expandWidthPercent")
+        }
+    }
     @Published var windowBindings: [String: AnnotationShortcut] {
         didSet { defaults.set(try? JSONEncoder().encode(windowBindings), forKey: "windowBindings") }
     }
@@ -115,6 +122,7 @@ final class Preferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        expandWidthPercent = min(60, max(20, defaults.object(forKey: "expandWidthPercent") as? Int ?? 40))
         windowBindings = defaults.data(forKey: "windowBindings").flatMap { try? JSONDecoder().decode([String: AnnotationShortcut].self, from: $0) } ?? [:]
         captureFlash = CaptureFlash(rawValue: defaults.string(forKey: "captureFlash") ?? "") ?? .off
         captureDisplayMode = CaptureDisplayMode(rawValue: defaults.string(forKey: "captureDisplayMode") ?? "") ?? .cursor
@@ -202,6 +210,7 @@ final class Preferences: ObservableObject {
     }
 
     func resetAdvanced() {
+        expandWidthPercent = 40
         wrapLaTeX = false
         copyChatOnDismiss = false
         confirmDismissChat = false
